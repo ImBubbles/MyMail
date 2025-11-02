@@ -24,7 +24,7 @@ export class MailService {
     // __dirname in compiled code: backend/dist/mail
     // Go up 3 levels: backend/dist/mail -> backend/dist -> backend -> CrazyMail
     // Then: scripts/sendsmtp/sendsmtp.exe
-    this.sendsmtpPath = join(__dirname, '..', '..', '..', 'scripts', 'sendsmtp', 'sendsmtp.exe');
+    this.sendsmtpPath = join(__dirname, '..', '..', '..', 'scripts', 'sendsmtp', 'sendsmtp');
     this.logger.log(`SMTP executable path: ${this.sendsmtpPath}`);
   }
 
