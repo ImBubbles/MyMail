@@ -178,7 +178,7 @@ onMounted(() => {
 
 const createEmail = () => {
   // TODO: Navigate to create email page or open modal
-  alert('Create email functionality coming soon!')
+  router.push('/compose')
 }
 </script>
 
