@@ -104,88 +104,95 @@ func main() {
 
 	// Send to each domain by resolving MX records and connecting directly
 	for domain, recipients := range recipientsByDomain {
-		// Resolve MX records for the domain
-		mxRecords, err := net.LookupMX(domain)
+		err := sendToDomain(domain, recipients, jsonMail)
 		if err != nil {
-			log.Fatalf("Error resolving MX records for %s: %v\n", domain, err)
-		}
-
-		if len(mxRecords) == 0 {
-			log.Fatalf("Error: no MX records found for domain %s\n", domain)
-		}
-
-		// Sort MX records by priority (lower priority number = higher priority)
-		sort.Slice(mxRecords, func(i, j int) bool {
-			return mxRecords[i].Pref < mxRecords[j].Pref
-		})
-
-		// Try to connect to MX servers in priority order
-		var sent bool
-		var lastErr error
-		for _, mx := range mxRecords {
-			host := strings.TrimSuffix(mx.Host, ".")
-			addr := net.JoinHostPort(host, "25")
-
-			log.Printf("Connecting to MX server %s (priority %d) for domain %s...\n",
-				host, mx.Pref, domain)
-
-			conn, err := net.Dial("tcp", addr)
-			if err != nil {
-				lastErr = err
-				log.Printf("Warning: failed to connect to %s: %v, trying next MX server...\n", addr, err)
-				continue
-			}
-
-			log.Printf("Connected to %s, sending email...\n", addr)
-
-			// Create a modified JSONMail with only recipients for this domain
-			domainJsonMail := &mail.JSONMail{
-				From:    jsonMail.From,
-				To:      []string{},
-				CC:      []string{},
-				BCC:     []string{},
-				Subject: jsonMail.Subject,
-				Body:    jsonMail.Body,
-				Headers: jsonMail.Headers,
-			}
-
-			// Add recipients for this domain to the appropriate field
-			// Maintain original To/CC/BCC structure for proper SMTP handling
-			for _, recipient := range recipients {
-				if contains(jsonMail.To, recipient) {
-					domainJsonMail.To = append(domainJsonMail.To, recipient)
-				} else if contains(jsonMail.CC, recipient) {
-					domainJsonMail.CC = append(domainJsonMail.CC, recipient)
-				} else if contains(jsonMail.BCC, recipient) {
-					domainJsonMail.BCC = append(domainJsonMail.BCC, recipient)
-				}
-			}
-
-			// Send email using MySMTP API
-			// NewClientConnFromJSONMail handles the SMTP conversation and sends the email
-			clientConn := smtp.NewClientConnFromJSONMail(conn, domainJsonMail)
-			if clientConn == nil {
-				conn.Close()
-				lastErr = fmt.Errorf("failed to create client connection")
-				log.Printf("Warning: failed to create client connection, trying next MX server...\n")
-				continue
-			}
-
-			// Close connection after sending
-			conn.Close()
-
-			sent = true
-			log.Printf("Email sent successfully to domain %s via %s\n", domain, host)
-			break
-		}
-
-		if !sent {
-			log.Fatalf("Error: failed to send email to domain %s after trying all MX servers. Last error: %v\n",
-				domain, lastErr)
+			log.Fatalf("Error: failed to send email to domain %s: %v\n", domain, err)
 		}
 	}
 
 	fmt.Println("Email sent successfully to all recipients!")
+}
+
+// sendToDomain attempts to send email to recipients in a specific domain
+func sendToDomain(domain string, recipients []string, jsonMail *mail.JSONMail) error {
+	// Resolve MX records for the domain
+	mxRecords, err := net.LookupMX(domain)
+	if err != nil {
+		return fmt.Errorf("error resolving MX records for %s: %v", domain, err)
+	}
+
+	if len(mxRecords) == 0 {
+		return fmt.Errorf("no MX records found for domain %s", domain)
+	}
+
+	// Sort MX records by priority (lower priority number = higher priority)
+	sort.Slice(mxRecords, func(i, j int) bool {
+		return mxRecords[i].Pref < mxRecords[j].Pref
+	})
+
+	// Create a modified JSONMail with only recipients for this domain
+	domainJsonMail := &mail.JSONMail{
+		From:    jsonMail.From,
+		To:      []string{},
+		CC:      []string{},
+		BCC:     []string{},
+		Subject: jsonMail.Subject,
+		Body:    jsonMail.Body,
+		Headers: jsonMail.Headers,
+	}
+
+	// Add recipients for this domain to the appropriate field
+	// Maintain original To/CC/BCC structure for proper SMTP handling
+	for _, recipient := range recipients {
+		if contains(jsonMail.To, recipient) {
+			domainJsonMail.To = append(domainJsonMail.To, recipient)
+		} else if contains(jsonMail.CC, recipient) {
+			domainJsonMail.CC = append(domainJsonMail.CC, recipient)
+		} else if contains(jsonMail.BCC, recipient) {
+			domainJsonMail.BCC = append(domainJsonMail.BCC, recipient)
+		}
+	}
+
+	// Try to connect to MX servers in priority order
+	var lastErr error
+	for _, mx := range mxRecords {
+		host := strings.TrimSuffix(mx.Host, ".")
+		addr := net.JoinHostPort(host, "25")
+
+		log.Printf("Connecting to MX server %s (priority %d) for domain %s...\n",
+			host, mx.Pref, domain)
+
+		conn, err := net.Dial("tcp", addr)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to connect to %s: %v", addr, err)
+			log.Printf("Warning: %v, trying next MX server...\n", lastErr)
+			continue
+		}
+
+		// Ensure connection is closed when function returns
+		defer conn.Close()
+
+		log.Printf("Connected to %s, sending email...\n", addr)
+
+		// Send email using MySMTP API
+		// NewClientConnFromJSONMail handles the SMTP conversation and sends the email
+		// The connection must remain open during the SMTP conversation
+		// The ClientConn performs HELO, MAIL FROM, RCPT TO, DATA, and QUIT synchronously
+		clientConn := smtp.NewClientConnFromJSONMail(conn, domainJsonMail)
+		if clientConn == nil {
+			lastErr = fmt.Errorf("failed to create client connection")
+			log.Printf("Warning: %v, trying next MX server...\n", lastErr)
+			continue
+		}
+
+		// The ClientConn manages the SMTP conversation synchronously during creation
+		// After NewClientConnFromJSONMail returns successfully, the email should be sent
+		// The SMTP conversation (HELO, MAIL FROM, RCPT TO, DATA, QUIT) is complete
+		log.Printf("Email sent successfully to domain %s via %s\n", domain, host)
+		return nil // Success!
+	}
+
+	return fmt.Errorf("failed to send email to domain %s after trying all MX servers. Last error: %v", domain, lastErr)
 }
 
 func contains(slice []string, item string) bool {

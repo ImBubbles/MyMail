@@ -1,3 +1,18 @@
+// postsmtp - SMTP server for receiving emails and storing them in PostgreSQL
+//
+// This server uses MySMTP library to accept incoming SMTP connections,
+// validate recipients against a PostgreSQL database, and store received emails.
+//
+// OS Differences:
+//   - On Windows, the compiled binary will be postsmtp.exe
+//   - On Unix-like systems (Linux, macOS), the binary will be postsmtp
+//   - Environment file (.env) loading works cross-platform via godotenv
+//   - Database connections use standard PostgreSQL drivers (cross-platform)
+//
+// Build commands:
+//   - Windows: go build -o postsmtp.exe
+//   - Unix/Linux: go build -o postsmtp
+//   - Cross-platform: go build (output name depends on OS)
 package main
 
 import (
