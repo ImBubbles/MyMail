@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { join } from 'path';
+import { platform } from 'os';
 import { Mail } from '../entities/mail.entity';
 import { SendMailDto } from './dto/send-mail.dto';
 
@@ -19,12 +20,16 @@ export class MailService {
     @InjectRepository(Mail)
     private mailRepository: Repository<Mail>,
   ) {
-    // Resolve path to sendsmtp.exe
+    // Resolve path to sendsmtp executable
     // From backend/src/mail/mail.service.ts (compiled to backend/dist/mail/mail.service.js)
     // __dirname in compiled code: backend/dist/mail
     // Go up 3 levels: backend/dist/mail -> backend/dist -> backend -> CrazyMail
-    // Then: scripts/sendsmtp/sendsmtp.exe
-    this.sendsmtpPath = join(__dirname, '..', '..', '..', 'scripts', 'sendsmtp', 'sendsmtp');
+    // Then: scripts/sendsmtp/sendsmtp (or sendsmtp.exe on Windows)
+    const basePath = join(__dirname, '..', '..', '..', 'scripts', 'sendsmtp', 'sendsmtp');
+    // Add .exe extension on Windows if not already present
+    this.sendsmtpPath = platform() === 'win32' && !basePath.endsWith('.exe') 
+      ? `${basePath}.exe` 
+      : basePath;
     this.logger.log(`SMTP executable path: ${this.sendsmtpPath}`);
   }
 
@@ -136,22 +141,29 @@ export class MailService {
       body: message,
     };
 
-    // Send email using sendsmtp.exe
+    // Send email using sendsmtp.exe (now uses direct MySMTP API instead of relay server)
     try {
-      this.logger.log(`Sending email via sendsmtp.exe: ${this.sendsmtpPath}`);
+      this.logger.log(`Sending email via sendsmtp (direct MySMTP API): ${this.sendsmtpPath}`);
       this.logger.debug(`SMTP data: ${JSON.stringify(smtpData, null, 2)}`);
 
-      const { stdout, stderr } = await execFileAsync(this.sendsmtpPath, [JSON.stringify(smtpData)], {
-        encoding: 'utf-8',
-        maxBuffer: 10 * 1024 * 1024, // 10MB buffer
-      });
+      // Use -json flag to pass JSON data to sendsmtp
+      // sendsmtp will resolve MX records and send directly to recipient mail servers
+      const { stdout, stderr } = await execFileAsync(
+        this.sendsmtpPath,
+        ['-json', JSON.stringify(smtpData)],
+        {
+          encoding: 'utf-8',
+          maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+          timeout: 30000, // 30 second timeout for MX resolution and sending
+        },
+      );
 
       if (stderr) {
-        this.logger.warn(`sendsmtp.exe stderr: ${stderr}`);
+        this.logger.warn(`sendsmtp stderr: ${stderr}`);
       }
 
-      this.logger.log(`sendsmtp.exe stdout: ${stdout}`);
-      this.logger.log('Email sent successfully via SMTP');
+      this.logger.log(`sendsmtp stdout: ${stdout}`);
+      this.logger.log('Email sent successfully via direct MySMTP API');
 
       return {
         message: 'Email sent successfully',
@@ -165,7 +177,7 @@ export class MailService {
         },
       };
     } catch (error: any) {
-      this.logger.error(`Failed to send email via sendsmtp.exe: ${error.message}`);
+      this.logger.error(`Failed to send email via sendsmtp: ${error.message}`);
       this.logger.error(error.stack);
 
       // Email is still saved in database, but sending failed
