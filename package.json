@@ -1,6 +1,10 @@
 {
   "name": "crazy-mail",
   "private": true,
+  "workspaces": [
+	"frontend",
+	"backend"
+  ],
   "scripts": {
     "dev": "concurrently \"npm run dev --prefix frontend\" \"npm run start:dev --prefix backend\""
   },
