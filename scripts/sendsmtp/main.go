@@ -154,14 +154,20 @@ func sendToDomain(domain string, recipients []string, jsonMail *mail.JSONMail) e
 		}
 	}
 
-	// Try to connect to MX servers in priority order
+	// Try to connect to ALL MX servers in priority order
+	// We'll attempt each one until we find a server that successfully accepts the email
 	var lastErr error
-	for _, mx := range mxRecords {
+	var attemptedServers []string
+
+	log.Printf("Found %d MX server(s) for domain %s, will try all valid SMTP domains\n", len(mxRecords), domain)
+
+	for i, mx := range mxRecords {
 		host := strings.TrimSuffix(mx.Host, ".")
 		addr := net.JoinHostPort(host, "25")
+		attemptedServers = append(attemptedServers, fmt.Sprintf("%s (priority %d)", host, mx.Pref))
 
-		log.Printf("Connecting to MX server %s (priority %d) for domain %s...\n",
-			host, mx.Pref, domain)
+		log.Printf("[%d/%d] Attempting MX server %s (priority %d) for domain %s...\n",
+			i+1, len(mxRecords), host, mx.Pref, domain)
 
 		// Dial with timeout to prevent hanging
 		dialer := &net.Dialer{
@@ -175,35 +181,48 @@ func sendToDomain(domain string, recipients []string, jsonMail *mail.JSONMail) e
 		}
 
 		// Set read and write timeouts to prevent hanging
-		conn.SetReadDeadline(time.Now().Add(30 * time.Second))
-		conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
+		readDeadline := time.Now().Add(30 * time.Second)
+		writeDeadline := time.Now().Add(30 * time.Second)
+		conn.SetReadDeadline(readDeadline)
+		conn.SetWriteDeadline(writeDeadline)
 
-		// Ensure connection is closed when function returns
-		defer conn.Close()
+		log.Printf("Connected to %s, attempting SMTP conversation...\n", addr)
 
-		log.Printf("Connected to %s, sending email...\n", addr)
-
-		// Send email using MySMTP API v0.0.7 (includes ClientConn fixes and improvements)
+		// Send email using MySMTP API v0.0.8 (includes ClientConn fixes and improvements)
 		// NewClientConnFromJSONMail handles the SMTP conversation and sends the email
 		// The connection must remain open during the SMTP conversation
 		// The ClientConn performs HELO, MAIL FROM, RCPT TO, DATA, and QUIT synchronously
-		// With v0.0.7, the ClientConn improvements should prevent connection timeouts
-		clientConn := smtp.NewClientConnFromJSONMail(conn, domainJsonMail)
+		// With v0.0.8, the ClientConn includes Close() method and improved connection handling
+
+		// Attempt SMTP conversation with proper cleanup
+		var clientConn *smtp.ClientConn
+
+		func() {
+			// Ensure connection is closed even if SMTP conversation fails
+			defer conn.Close()
+			clientConn = smtp.NewClientConnFromJSONMail(conn, domainJsonMail)
+		}()
+
 		if clientConn == nil {
-			lastErr = fmt.Errorf("failed to create client connection")
-			log.Printf("Warning: %v, trying next MX server...\n", lastErr)
+			lastErr = fmt.Errorf("failed to create client connection or SMTP conversation failed")
+			log.Printf("Warning: SMTP conversation failed on %s: %v, trying next MX server...\n", addr, lastErr)
 			continue
 		}
 
+		// If we get here, the ClientConn was created successfully
 		// The ClientConn manages the SMTP conversation synchronously during creation
 		// After NewClientConnFromJSONMail returns successfully, the email should be sent
 		// The SMTP conversation (HELO, MAIL FROM, RCPT TO, DATA, QUIT) is complete
-		// Connection is properly closed as part of the QUIT command in v0.0.5
-		log.Printf("Email sent successfully to domain %s via %s\n", domain, host)
+		log.Printf("Email sent successfully to domain %s via %s (priority %d)\n", domain, host, mx.Pref)
+		log.Printf("Successfully used %s out of %d available MX server(s)\n", host, len(mxRecords))
 		return nil // Success!
 	}
 
-	return fmt.Errorf("failed to send email to domain %s after trying all MX servers. Last error: %v", domain, lastErr)
+	// If we reach here, all MX servers failed
+	log.Printf("All %d MX server(s) failed for domain %s\n", len(mxRecords), domain)
+	log.Printf("Attempted servers: %s\n", strings.Join(attemptedServers, ", "))
+	return fmt.Errorf("failed to send email to domain %s after trying all %d MX server(s). Last error: %v",
+		domain, len(mxRecords), lastErr)
 }
 
 func contains(slice []string, item string) bool {
