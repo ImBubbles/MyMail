@@ -27,7 +27,7 @@
               </span>
             </div>
             <p class="text-sm font-semibold text-gray-900 truncate">
-              {{ email.headers?.Subject || '(No Subject)' }}
+              {{ getSubject(email) }}
             </p>
             <p class="text-sm text-gray-600 truncate mt-1">
               {{ truncateMessage(getDisplayText(email)) }}
@@ -69,6 +69,39 @@ const formatDate = (dateString: string) => {
   } else {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   }
+}
+
+const getSubject = (email: Mail): string => {
+  if (!email.headers || typeof email.headers !== 'object') {
+    return '(No Subject)'
+  }
+  
+  // Try different case variations of Subject header
+  // First try common variations
+  let subject = email.headers.Subject || 
+                 email.headers.subject || 
+                 email.headers.SUBJECT ||
+                 email.headers['subject'] ||
+                 email.headers['Subject'] ||
+                 email.headers['SUBJECT']
+  
+  // If not found, search through all keys case-insensitively
+  if (!subject) {
+    const headerKeys = Object.keys(email.headers)
+    const subjectKey = headerKeys.find(key => 
+      key.toLowerCase() === 'subject'
+    )
+    if (subjectKey) {
+      subject = email.headers[subjectKey]
+    }
+  }
+  
+  // Ensure subject is a string
+  if (typeof subject !== 'string') {
+    return '(No Subject)'
+  }
+  
+  return subject.trim() || '(No Subject)'
 }
 
 const getDisplayText = (email: Mail) => {

@@ -183,27 +183,49 @@ export function getEmailDisplayText(email: {
   message: string
   headers?: Record<string, any>
 }): string {
-  if (!email.message) {
+  if (!email.message || typeof email.message !== 'string') {
     return ''
   }
 
-  // Get Content-Type from headers
-  const contentType = email.headers?.['content-type'] || 
-                      email.headers?.['Content-Type'] ||
-                      email.headers?.['CONTENT-TYPE']
-
-  // Extract content from multipart if needed
-  const displayText = extractFromMultipart(email.message, contentType)
-
-  // Strip HTML tags if it's HTML content (for preview)
-  if (contentType?.toLowerCase().includes('text/html') || displayText.includes('<html') || displayText.includes('<body')) {
-    // Remove HTML tags for plain text preview
-    const tempDiv = document.createElement('div')
-    tempDiv.innerHTML = displayText
-    return tempDiv.textContent || tempDiv.innerText || displayText
+  // Get Content-Type from headers (case-insensitive)
+  let contentType: string | null = null
+  if (email.headers && typeof email.headers === 'object') {
+    contentType = email.headers['content-type'] || 
+                   email.headers['Content-Type'] ||
+                   email.headers['CONTENT-TYPE'] ||
+                   (() => {
+                     // Try to find any case variation
+                     const headerKeys = Object.keys(email.headers)
+                     const contentTypeKey = headerKeys.find(key => 
+                       key.toLowerCase() === 'content-type'
+                     )
+                     return contentTypeKey ? email.headers[contentTypeKey] : null
+                   })()
+  }
+  
+  // Ensure contentType is a string
+  if (contentType && typeof contentType !== 'string') {
+    contentType = String(contentType)
   }
 
-  return displayText
+  // Extract content from multipart if needed
+  const displayText = extractFromMultipart(email.message, contentType || undefined)
+
+  // Strip HTML tags if it's HTML content (for preview)
+  if (contentType?.toLowerCase().includes('text/html') || 
+      (typeof displayText === 'string' && (displayText.includes('<html') || displayText.includes('<body')))) {
+    // Remove HTML tags for plain text preview
+    try {
+      const tempDiv = document.createElement('div')
+      tempDiv.innerHTML = displayText
+      return tempDiv.textContent || tempDiv.innerText || displayText
+    } catch (e) {
+      // If parsing fails, return as-is
+      return displayText
+    }
+  }
+
+  return displayText || ''
 }
 
 /**
@@ -217,9 +239,19 @@ export function getEmailHTMLContent(email: {
     return null
   }
 
+  // Get Content-Type from headers (case-insensitive)
   const contentType = email.headers?.['content-type'] || 
                       email.headers?.['Content-Type'] ||
-                      email.headers?.['CONTENT-TYPE']
+                      email.headers?.['CONTENT-TYPE'] ||
+                      (() => {
+                        // Try to find any case variation
+                        if (!email.headers) return null
+                        const headerKeys = Object.keys(email.headers)
+                        const contentTypeKey = headerKeys.find(key => 
+                          key.toLowerCase() === 'content-type'
+                        )
+                        return contentTypeKey ? email.headers[contentTypeKey] : null
+                      })()
 
   const displayText = extractFromMultipart(email.message, contentType)
 
@@ -242,9 +274,19 @@ export function getEmailHTMLContent(email: {
 export function isMultipartEmail(email: {
   headers?: Record<string, any>
 }): boolean {
+  // Get Content-Type from headers (case-insensitive)
   const contentType = email.headers?.['content-type'] || 
                       email.headers?.['Content-Type'] ||
-                      email.headers?.['CONTENT-TYPE']
+                      email.headers?.['CONTENT-TYPE'] ||
+                      (() => {
+                        // Try to find any case variation
+                        if (!email.headers) return null
+                        const headerKeys = Object.keys(email.headers)
+                        const contentTypeKey = headerKeys.find(key => 
+                          key.toLowerCase() === 'content-type'
+                        )
+                        return contentTypeKey ? email.headers[contentTypeKey] : null
+                      })()
 
   if (!contentType) {
     return false

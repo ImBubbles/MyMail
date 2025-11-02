@@ -84,7 +84,10 @@ export class MailService {
     // Filter emails by query (search in subject, message, sender, recipient)
     const queryLower = query.toLowerCase();
     const filteredEmails = allEmails.filter((email) => {
-      const subject = email.headers?.Subject || '';
+      // Get subject case-insensitively
+      const subject = email.headers?.Subject || 
+                      email.headers?.subject || 
+                      email.headers?.SUBJECT || '';
       const message = email.message || '';
       const sender = email.sender || '';
       const recipient = email.recipient || '';
