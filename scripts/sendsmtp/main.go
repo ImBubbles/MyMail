@@ -142,6 +142,16 @@ func sendToDomain(domain string, recipients []string, jsonMail *mail.JSONMail) e
 		Headers: jsonMail.Headers,
 	}
 
+	// Validate and log email content before sending
+	if domainJsonMail.Body == "" {
+		log.Printf("WARNING: Email body is empty for domain %s!\n", domain)
+	}
+	if domainJsonMail.Subject == "" {
+		log.Printf("WARNING: Email subject is empty for domain %s!\n", domain)
+	}
+	log.Printf("Preparing to send email - From: %s, Body length: %d, Subject: %s\n",
+		domainJsonMail.From, len(domainJsonMail.Body), domainJsonMail.Subject)
+
 	// Add recipients for this domain to the appropriate field
 	// Maintain original To/CC/BCC structure for proper SMTP handling
 	for _, recipient := range recipients {
@@ -187,21 +197,65 @@ func sendToDomain(domain string, recipients []string, jsonMail *mail.JSONMail) e
 		conn.SetWriteDeadline(writeDeadline)
 
 		log.Printf("Connected to %s, attempting SMTP conversation...\n", addr)
+		log.Printf("Email details - From: %s, To: %v, CC: %v, BCC: %v, Subject: %s\n",
+			domainJsonMail.From, domainJsonMail.To, domainJsonMail.CC, domainJsonMail.BCC, domainJsonMail.Subject)
+		log.Printf("Email body length: %d bytes, Body preview: %s\n",
+			len(domainJsonMail.Body),
+			func() string {
+				if len(domainJsonMail.Body) > 100 {
+					return domainJsonMail.Body[:100] + "..."
+				}
+				return domainJsonMail.Body
+			}())
 
-		// Send email using MySMTP API v0.0.12 (includes ClientConn fixes and improvements)
+		// Send email using MySMTP API v0.0.14 (includes ClientConn fixes and improvements)
 		// NewClientConnFromJSONMail handles the SMTP conversation and sends the email
 		// The connection must remain open during the SMTP conversation
 		// The ClientConn performs HELO, MAIL FROM, RCPT TO, DATA, and QUIT synchronously
-		// With v0.0.12, the ClientConn includes latest improvements and better connection handling
+		// With v0.0.14, the ClientConn includes latest improvements and better connection handling
 
 		// Attempt SMTP conversation - connection must stay open until conversation completes
-		// Don't close the connection prematurely as NewClientConnFromJSONMail manages it
+		// NewClientConnFromJSONMail should perform the full SMTP conversation synchronously
+		// Log detailed information about what we're sending
+		log.Printf("Creating ClientConn with email data:\n")
+		log.Printf("  From: %s\n", domainJsonMail.From)
+		log.Printf("  To: %v\n", domainJsonMail.To)
+		log.Printf("  CC: %v\n", domainJsonMail.CC)
+		log.Printf("  BCC: %v\n", domainJsonMail.BCC)
+		log.Printf("  Subject: %s\n", domainJsonMail.Subject)
+		log.Printf("  Body: %q (length: %d)\n",
+			func() string {
+				if len(domainJsonMail.Body) > 50 {
+					return domainJsonMail.Body[:50] + "..."
+				}
+				return domainJsonMail.Body
+			}(),
+			len(domainJsonMail.Body))
+		log.Printf("  Headers: %v\n", domainJsonMail.Headers)
+
+		log.Printf("Initiating SMTP conversation via NewClientConnFromJSONMail...\n")
 		clientConn, smtpErr := smtp.NewClientConnFromJSONMail(conn, domainJsonMail)
+
+		// Log the result before checking errors
+		if smtpErr != nil {
+			log.Printf("ERROR: SMTP error during conversation: %v\n", smtpErr)
+			log.Printf("ERROR DETAILS: %+v\n", smtpErr)
+		}
+		if clientConn == nil {
+			log.Printf("ERROR: ClientConn is nil after creation\n")
+		} else {
+			log.Printf("ClientConn created successfully\n")
+			// Check if ClientConn has connection info
+			if connInfo := clientConn.GetConn(); connInfo != nil {
+				log.Printf("ClientConn has underlying connection\n")
+			}
+		}
 
 		// Only close connection after SMTP conversation completes (success or failure)
 		// ClientConn handles QUIT command which closes the connection, but we ensure cleanup
 		defer func() {
 			if conn != nil {
+				log.Printf("Cleaning up: closing connection to %s\n", addr)
 				conn.Close()
 			}
 		}()

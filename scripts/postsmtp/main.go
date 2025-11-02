@@ -88,9 +88,9 @@ func main() {
 	// Create message handler
 	handler := NewMessageHandler(database)
 
-	// Create SMTP server using MySMTP library v0.0.12
+	// Create SMTP server using MySMTP library v0.0.14
 	// Reference: https://github.com/ImBubbles/MySMTP
-	// v0.0.12 includes latest improvements and ClientConn fixes for better connection handling
+	// v0.0.14 includes latest improvements and ClientConn fixes for better connection handling
 	// NewServer takes (address string, port uint16)
 	smtpServer := server.NewServer(serverAddress, uint16(serverPort))
 
@@ -103,6 +103,26 @@ func main() {
 		mailFrom := m.GetFrom()
 		rcptTo := m.GetTo()
 		data := []byte(m.GetData())
+
+		// Log received email details for debugging
+		log.Printf("=== Received email ===\n")
+		log.Printf("From: %s\n", mailFrom)
+		log.Printf("To: %v\n", rcptTo)
+		log.Printf("Data length: %d bytes\n", len(data))
+
+		if len(data) == 0 {
+			log.Printf("ERROR: Email data is empty/blank!\n")
+		} else {
+			// Log first 500 characters of data for debugging
+			dataStr := string(data)
+			if len(dataStr) > 500 {
+				log.Printf("Data preview (first 500 chars): %s...\n", dataStr[:500])
+			} else {
+				log.Printf("Full data: %s\n", dataStr)
+			}
+		}
+		log.Printf("======================\n")
+
 		return handler.HandleMessage(nil, mailFrom, rcptTo, data)
 	}
 
@@ -111,10 +131,13 @@ func main() {
 		// Extract username from email
 		parts := strings.Split(email, "@")
 		if len(parts) == 0 {
+			log.Printf("EmailExistsChecker: Invalid email format: %s (returning false)\n", email)
 			return false
 		}
 		username := parts[0]
-		return handler.db.ValidateRecipient(username)
+		exists := handler.db.ValidateRecipient(username)
+		log.Printf("EmailExistsChecker: Checking email %s -> username: %s, exists: %v\n", email, username, exists)
+		return exists
 	}
 
 	// Set handlers for the server
@@ -133,6 +156,10 @@ func main() {
 
 	// Start the server using Listen function
 	log.Println("Starting SMTP server...")
+	log.Printf("Server configuration - Hostname: %s, Domain: %s, Address: %s, Port: %d\n",
+		serverConfig.ServerHostname, serverConfig.ServerDomain, serverConfig.ServerAddress, serverConfig.ServerPort)
+	log.Println("SMTP server is ready and listening for connections...")
+	log.Println("Waiting for incoming connections...")
 	server.Listen(smtpServer, serverConfig)
 }
 
