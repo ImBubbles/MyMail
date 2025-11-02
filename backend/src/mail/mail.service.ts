@@ -34,11 +34,22 @@ export class MailService {
   }
 
   async getEmailsForUser(recipientEmail: string) {
+    // Ensure recipientEmail is a full email address (username@domain), not just username
+    if (!recipientEmail.includes('@')) {
+      this.logger.warn(`getEmailsForUser called with non-email recipient: ${recipientEmail}`);
+      return {
+        emails: [],
+        count: 0,
+      };
+    }
+
+    this.logger.log(`Getting emails for user: ${recipientEmail}`);
     const emails = await this.mailRepository.find({
       where: { recipient: recipientEmail },
       order: { createdAt: 'DESC' },
     });
 
+    this.logger.log(`Found ${emails.length} emails for recipient: ${recipientEmail}`);
     return {
       emails,
       count: emails.length,
@@ -93,6 +104,13 @@ export class MailService {
   }
 
   async getEmailById(uid: string, recipientEmail: string) {
+    // Ensure recipientEmail is a full email address (username@domain), not just username
+    if (!recipientEmail.includes('@')) {
+      this.logger.warn(`getEmailById called with non-email recipient: ${recipientEmail}`);
+      throw new NotFoundException('Invalid recipient email format');
+    }
+
+    this.logger.log(`Getting email by ID: ${uid} for recipient: ${recipientEmail}`);
     const email = await this.mailRepository.findOne({
       where: { uid, recipient: recipientEmail },
     });

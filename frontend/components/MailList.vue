@@ -30,7 +30,7 @@
               {{ email.headers?.Subject || '(No Subject)' }}
             </p>
             <p class="text-sm text-gray-600 truncate mt-1">
-              {{ truncateMessage(email.message) }}
+              {{ truncateMessage(getDisplayText(email)) }}
             </p>
           </div>
         </div>
@@ -41,6 +41,7 @@
 
 <script setup lang="ts">
 import type { Mail } from '~/composables/useMail'
+import { getEmailDisplayText } from '~/utils/emailParser'
 
 defineProps<{
   emails: Mail[]
@@ -68,6 +69,10 @@ const formatDate = (dateString: string) => {
   } else {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   }
+}
+
+const getDisplayText = (email: Mail) => {
+  return getEmailDisplayText(email)
 }
 
 const truncateMessage = (message: string, maxLength: number = 100) => {

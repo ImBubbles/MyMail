@@ -10,6 +10,7 @@ exports.AppModule = void 0;
 const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
 const path_1 = require("path");
+const fs_1 = require("fs");
 const app_controller_1 = require("./app.controller");
 const app_service_1 = require("./app.service");
 const database_module_1 = require("./database/database.module");
@@ -23,7 +24,20 @@ exports.AppModule = AppModule = __decorate([
         imports: [
             config_1.ConfigModule.forRoot({
                 isGlobal: true,
-                envFilePath: (0, path_1.join)(__dirname, '..', '.env'),
+                envFilePath: (() => {
+                    const possiblePaths = [
+                        (0, path_1.join)(__dirname, '..', '.env'),
+                        (0, path_1.join)(process.cwd(), '.env'),
+                        (0, path_1.join)(__dirname, '.env'),
+                    ];
+                    for (const path of possiblePaths) {
+                        if ((0, fs_1.existsSync)(path)) {
+                            return path;
+                        }
+                    }
+                    return (0, path_1.join)(__dirname, '..', '.env');
+                })(),
+                load: [],
             }),
             database_module_1.DatabaseModule,
             auth_module_1.AuthModule,
