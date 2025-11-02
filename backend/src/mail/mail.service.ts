@@ -148,13 +148,14 @@ export class MailService {
 
       // Use -json flag to pass JSON data to sendsmtp
       // sendsmtp will resolve MX records and send directly to recipient mail servers
+      // Increased timeout to allow for MX resolution, connection, and full SMTP conversation
       const { stdout, stderr } = await execFileAsync(
         this.sendsmtpPath,
         ['-json', JSON.stringify(smtpData)],
         {
           encoding: 'utf-8',
           maxBuffer: 10 * 1024 * 1024, // 10MB buffer
-          timeout: 30000, // 30 second timeout for MX resolution and sending
+          timeout: 60000, // 60 second timeout for MX resolution, connection, and full SMTP conversation
         },
       );
 

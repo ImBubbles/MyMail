@@ -194,14 +194,16 @@ func sendToDomain(domain string, recipients []string, jsonMail *mail.JSONMail) e
 		// The ClientConn performs HELO, MAIL FROM, RCPT TO, DATA, and QUIT synchronously
 		// With v0.0.12, the ClientConn includes latest improvements and better connection handling
 
-		// Attempt SMTP conversation with proper cleanup
-		var clientConn *smtp.ClientConn
-		var smtpErr error
+		// Attempt SMTP conversation - connection must stay open until conversation completes
+		// Don't close the connection prematurely as NewClientConnFromJSONMail manages it
+		clientConn, smtpErr := smtp.NewClientConnFromJSONMail(conn, domainJsonMail)
 
-		func() {
-			// Ensure connection is closed even if SMTP conversation fails
-			defer conn.Close()
-			clientConn, smtpErr = smtp.NewClientConnFromJSONMail(conn, domainJsonMail)
+		// Only close connection after SMTP conversation completes (success or failure)
+		// ClientConn handles QUIT command which closes the connection, but we ensure cleanup
+		defer func() {
+			if conn != nil {
+				conn.Close()
+			}
 		}()
 
 		if clientConn == nil || smtpErr != nil {
