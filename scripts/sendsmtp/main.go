@@ -208,11 +208,11 @@ func sendToDomain(domain string, recipients []string, jsonMail *mail.JSONMail) e
 				return domainJsonMail.Body
 			}())
 
-		// Send email using MySMTP API v0.0.14 (includes ClientConn fixes and improvements)
+		// Send email using MySMTP API v0.0.15 (includes ClientConn fixes and improvements)
 		// NewClientConnFromJSONMail handles the SMTP conversation and sends the email
 		// The connection must remain open during the SMTP conversation
 		// The ClientConn performs HELO, MAIL FROM, RCPT TO, DATA, and QUIT synchronously
-		// With v0.0.14, the ClientConn includes latest improvements and better connection handling
+		// With v0.0.15, the ClientConn includes latest improvements and better connection handling
 
 		// Attempt SMTP conversation - connection must stay open until conversation completes
 		// NewClientConnFromJSONMail should perform the full SMTP conversation synchronously

@@ -88,9 +88,9 @@ func main() {
 	// Create message handler
 	handler := NewMessageHandler(database)
 
-	// Create SMTP server using MySMTP library v0.0.14
+	// Create SMTP server using MySMTP library v0.0.15
 	// Reference: https://github.com/ImBubbles/MySMTP
-	// v0.0.14 includes latest improvements and ClientConn fixes for better connection handling
+	// v0.0.15 includes latest improvements and ClientConn fixes for better connection handling
 	// NewServer takes (address string, port uint16)
 	smtpServer := server.NewServer(serverAddress, uint16(serverPort))
 
