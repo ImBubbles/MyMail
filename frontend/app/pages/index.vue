@@ -5,6 +5,7 @@ import { watch, onMounted, ref } from 'vue'
 const { hasCredentials } = useCredentials()
 import { useRouter } from 'vue-router'
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
+import EmailCard from '../components/EmailCard.vue';
 const router = useRouter()
 
 const isPlayingAudio = ref(false)
@@ -176,13 +177,21 @@ onMounted(() => {
   }
 })
 
+// Refresh emails when navigating back to this page
+watch(() => router.currentRoute.value.path, (newPath) => {
+  if (newPath === '/' && hasCredentials.value) {
+    fetchEmails()
+  }
+})
+
 const createEmail = () => {
   // TODO: Navigate to create email page or open modal
-  alert('Create email functionality coming soon!')
+  router.push('/compose')
 }
 </script>
 
 <template>
+  <div id="app">
   <div class="inbox-container">
     <header class="inbox-header">
       <div class="header-content">
@@ -296,6 +305,14 @@ const createEmail = () => {
               <span class="email-meta-label">To:</span>
               <span class="email-meta-value">{{ selectedEmail.to }}</span>
             </div>
+            <div class="email-meta-row" v-if="selectedEmail && selectedEmail.cc && selectedEmail.cc.length > 0">
+              <span class="email-meta-label">CC:</span>
+              <span class="email-meta-value">{{ selectedEmail.cc.join(', ') }}</span>
+            </div>
+            <div class="email-meta-row" v-if="selectedEmail && selectedEmail.bcc && selectedEmail.bcc.length > 0">
+              <span class="email-meta-label">BCC:</span>
+              <span class="email-meta-value">{{ selectedEmail.bcc.join(', ') }}</span>
+            </div>
             <div class="email-meta-row">
               <span class="email-meta-label">Date:</span>
               <span class="email-meta-value">{{ new Date(selectedEmail.date).toLocaleString() }}</span>
@@ -316,9 +333,11 @@ const createEmail = () => {
           <div class="email-modal-body">
             {{ selectedEmail.body }}
           </div>
+
         </div>
       </div>
     </div>
+  </div>
   </div>
 </template>
 

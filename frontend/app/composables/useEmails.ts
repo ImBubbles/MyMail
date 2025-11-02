@@ -8,6 +8,8 @@ export interface Email {
   subject: string
   from: string
   to: string
+  cc?: string[]
+  bcc?: string[]
   body: string
   date: string
   tags: string[]
@@ -26,23 +28,21 @@ export const useEmails = () => {
     error.value = null
     
     try {
-      // TODO: Replace with actual backend API endpoint
-      // For now, using mock data
       const config = useRuntimeConfig()
       const baseURL = config.public.apiBase || 'http://localhost:3000'
       
-      // Try to fetch from backend with timeout, fallback to mock data if unavailable
+      // Try to fetch from backend with timeout
       try {
         // Create a timeout promise
         const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error('Request timeout')), 2000) // 2 second timeout
+          setTimeout(() => reject(new Error('Request timeout')), 5000) // 5 second timeout
         })
         
         // Race between fetch and timeout
         const response = await Promise.race([
           $fetch<Email[]>(`${baseURL}/api/emails`, {
             method: 'GET',
-            timeout: 2000,
+            timeout: 5000,
           }).catch((err) => {
             // If fetch fails, throw to be caught by outer catch
             throw err
@@ -50,12 +50,32 @@ export const useEmails = () => {
           timeoutPromise
         ])
         
-        // If response is valid and not empty, use it
-        if (response && Array.isArray(response) && response.length > 0) {
-          emails.value = response
+        // If response is valid array, use it (even if empty)
+        if (response && Array.isArray(response)) {
+          // Validate and normalize email objects
+          const normalizedEmails = response.map((email: any) => ({
+            id: email.id || email.uid || String(Date.now() + Math.random()),
+            subject: email.subject || email.headers?.Subject || '(No Subject)',
+            from: email.from || email.sender || email.headers?.From || 'unknown@crazymail.com',
+            to: email.to || email.recipient || email.headers?.To || '',
+            cc: email.cc || email.headers?.['Cc'] || [],
+            bcc: email.bcc || email.headers?.['Bcc'] || [],
+            body: email.body || email.message || email.content || '',
+            date: email.date || email.created_at || email.headers?.Date || new Date().toISOString(),
+            tags: email.tags || [],
+            read: email.read || false
+          }))
+          
+          emails.value = normalizedEmails
+          // If backend returned empty array, show empty state (don't use mock data)
+          if (normalizedEmails.length === 0) {
+            console.log('Backend returned empty email list')
+          } else {
+            console.log(`Loaded ${normalizedEmails.length} email(s) from backend`)
+          }
         } else {
-          // Empty response, use mock data
-          console.warn('Backend returned empty response, using mock data')
+          // Invalid response format, use mock data as fallback
+          console.warn('Backend returned invalid response format, using mock data. Response:', response)
           emails.value = getMockEmails()
         }
       } catch (err: any) {
@@ -83,6 +103,8 @@ export const useEmails = () => {
         subject: 'Welcome to CrazyMail',
         from: 'system@crazymail.com',
         to: 'user@example.com',
+        cc: ['admin@crazymail.com'],
+        bcc: [],
         body: 'Welcome to CrazyMail! Start creating emails and organizing them with tags. How long will this go until it cant be displayed in the email card?',
         date: new Date().toISOString(),
         tags: ['welcome', 'system'],
@@ -93,6 +115,8 @@ export const useEmails = () => {
         subject: 'Getting Started Guide',
         from: 'support@crazymail.com',
         to: 'user@example.com',
+        cc: ['support-team@crazymail.com', 'manager@crazymail.com'],
+        bcc: ['archive@crazymail.com'],
         body: 'Here are some tips to get you started with CrazyMail...',
         date: new Date(Date.now() - 86400000).toISOString(),
         tags: ['support', 'guide'],
@@ -103,6 +127,8 @@ export const useEmails = () => {
         subject: 'Weekly Newsletter',
         from: 'newsletter@crazymail.com',
         to: 'user@example.com',
+        cc: [],
+        bcc: [],
         body: 'Check out this week\'s updates and features...',
         date: new Date(Date.now() - 172800000).toISOString(),
         tags: ['newsletter'],

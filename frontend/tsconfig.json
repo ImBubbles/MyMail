@@ -10,7 +10,8 @@
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "strict": false,
-    "noEmit": true
+    "emitDeclarationOnly": true,
+    "composite": true
   },
   "include": [
     "composables/**/*"

@@ -9,6 +9,8 @@ export interface Email {
   subject: string
   from: string
   to: string
+  cc?: string[]
+  bcc?: string[]
   body: string
   date: string
   tags: string[]
@@ -59,6 +61,8 @@ export const useEmails = () => {
         subject: 'Welcome to CrazyMail',
         from: 'system@crazymail.com',
         to: 'user@example.com',
+        cc: ['admin@crazymail.com'],
+        bcc: [],
         body: 'Welcome to CrazyMail! Start creating emails and organizing them with tags.',
         date: new Date().toISOString(),
         tags: ['welcome', 'system'],
@@ -69,6 +73,8 @@ export const useEmails = () => {
         subject: 'Getting Started Guide',
         from: 'support@crazymail.com',
         to: 'user@example.com',
+        cc: ['support-team@crazymail.com', 'manager@crazymail.com'],
+        bcc: ['archive@crazymail.com'],
         body: 'Here are some tips to get you started with CrazyMail...',
         date: new Date(Date.now() - 86400000).toISOString(),
         tags: ['support', 'guide'],
@@ -79,6 +85,8 @@ export const useEmails = () => {
         subject: 'Weekly Newsletter',
         from: 'newsletter@crazymail.com',
         to: 'user@example.com',
+        cc: [],
+        bcc: [],
         body: 'Check out this week\'s updates and features...',
         date: new Date(Date.now() - 172800000).toISOString(),
         tags: ['newsletter'],

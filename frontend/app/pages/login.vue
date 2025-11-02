@@ -31,28 +31,30 @@ const clearCredentials = () => {
 </script>
 
 <template>
-  <div class="login-container">
-    <div class="login-card">
-      <h1 class="title">Account Setup</h1>
-      <p class="subtitle">Create a username and password:</p>
+  
+  <div id="app">
+    <div class="login-container">
+      <div class="login-card">
+        <h1 class="title">Account Setup</h1>
+        <p class="subtitle">Create a username and password:</p>
 
-      <form @submit.prevent="saveCredentials" class="login-form">
-        <div class="form-group">
-          <label for="username" class="label">Username</label>
-          <input
-            id="username"
-            v-model="username"
-            type="text"
-            class="input"
-            placeholder="Enter your username"
-            required
-          />
-        </div>
+        <form @submit.prevent="saveCredentials" class="login-form">
+          <div class="form-group">
+            <label for="username" class="label">Username</label>
+            <input
+              id="username"
+              v-model="username"
+              type="text"
+              class="input"
+              placeholder="Enter your username"
+              required
+            />
+          </div>
 
-        <div class="form-group">
-          <label for="password" class="label">Password</label>
-          <input
-            id="password"
+          <div class="form-group">
+            <label for="password" class="label">Password</label>
+            <input
+              id="password"
             v-model="password"
             type="password"
             class="input"
@@ -74,6 +76,7 @@ const clearCredentials = () => {
       </div>
     </div>
   </div>
+</div>
 </template>
 
 <style scoped>
