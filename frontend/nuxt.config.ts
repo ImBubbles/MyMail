@@ -4,7 +4,7 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   modules: ['@nuxt/eslint', '@nuxt/fonts', '@nuxtjs/tailwindcss'],
   devServer: {
-    port: Number(process.env.PORT ?? '3001'),
+    port: Number(process.env.PORT ?? '443'),
   },
   runtimeConfig: {
     public: {
