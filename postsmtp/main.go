@@ -5,11 +5,15 @@ import (
 	"log"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 
 	"postsmtp/db"
 
+	"github.com/ImBubbles/MySMTP/config"
+	"github.com/ImBubbles/MySMTP/mail"
 	"github.com/ImBubbles/MySMTP/server"
+	"github.com/ImBubbles/MySMTP/smtp"
 	"github.com/joho/godotenv"
 )
 
@@ -30,12 +34,12 @@ func (h *MessageHandler) HandleMessage(conn net.Conn, mailFrom string, rcptTo []
 			return fmt.Errorf("invalid recipient format: %s", recipient)
 		}
 		username := parts[0]
-		
+
 		if !h.db.ValidateRecipient(username) {
 			return fmt.Errorf("recipient username not found: %s", username)
 		}
 	}
-	
+
 	// Store the message
 	return h.db.StoreMessage(mailFrom, rcptTo, data)
 }
@@ -55,54 +59,65 @@ func main() {
 	defer database.Close()
 
 	// Get SMTP server configuration
-	serverHostname := getEnv("SMTP_SERVER_HOSTNAME", "localhost")
-	serverPort := getEnv("SMTP_SERVER_PORT", "2525")
+	serverPortStr := getEnv("SMTP_SERVER_PORT", "2525")
 	serverAddress := getEnv("SMTP_SERVER_ADDRESS", "0.0.0.0")
-	serverDomain := getEnv("SMTP_SERVER_DOMAIN", "localhost")
 
-	log.Printf("Starting SMTP server on %s:%s", serverAddress, serverPort)
+	// Convert port to uint16
+	serverPort, err := strconv.ParseUint(serverPortStr, 10, 16)
+	if err != nil {
+		log.Fatalf("Invalid SMTP server port: %v", err)
+	}
+
+	log.Printf("Starting SMTP server on %s:%s", serverAddress, serverPortStr)
 
 	// Create message handler
 	handler := NewMessageHandler(database)
 
-	// Create SMTP server using MySMTP v1.0.0 library
+	// Create SMTP server using MySMTP library
 	// Reference: https://github.com/ImBubbles/MySMTP
-	// Based on the repository structure, the handler is likely registered via:
-	// 1. Config.Handler field, or
-	// 2. Server.OnMessage() method, or
-	// 3. Server.Handler field
-	// Handler function signature: func(conn net.Conn, mailFrom string, rcptTo []string, data []byte) error
-	
-	// Define message handler function
-	messageHandler := func(conn net.Conn, mailFrom string, rcptTo []string, data []byte) error {
-		return handler.HandleMessage(conn, mailFrom, rcptTo, data)
-	}
-	
-	// Create server configuration with handler
-	// Option 1: Handler in config (most common pattern)
-	config := &server.Config{
-		Hostname: serverHostname,
-		Address:  serverAddress,
-		Port:     serverPort,
-		Domain:   serverDomain,
-		Handler:  messageHandler, // Try setting handler in config
-	}
-	
-	// Create SMTP server
-	smtpServer := server.NewServer(config)
-	
-	// Option 2: If handler wasn't in config, try setting it directly
-	// Uncomment if Option 1 doesn't work:
-	// smtpServer.Handler = messageHandler
-	
-	// Option 3: If the library uses OnMessage method
-	// Uncomment if Options 1 and 2 don't work:
-	// smtpServer.OnMessage(messageHandler)
+	// NewServer takes (address string, port uint16)
+	smtpServer := server.NewServer(serverAddress, uint16(serverPort))
 
-	// Start the server
-	if err := smtpServer.ListenAndServe(); err != nil {
-		log.Fatalf("SMTP server error: %v", err)
+	// Create SMTP handlers
+	handlers := smtp.NewHandlers()
+
+	// Set mail handler - MailHandler processes a completed mail.Mail object
+	handlers.MailHandler = func(m *mail.Mail) error {
+		// Extract mailFrom, rcptTo, and data from mail.Mail object using getter methods
+		mailFrom := m.GetFrom()
+		rcptTo := m.GetTo()
+		data := []byte(m.GetData())
+		return handler.HandleMessage(nil, mailFrom, rcptTo, data)
 	}
+
+	// Set email exists checker - validate recipients
+	handlers.EmailExistsChecker = func(email string) bool {
+		// Extract username from email
+		parts := strings.Split(email, "@")
+		if len(parts) == 0 {
+			return false
+		}
+		username := parts[0]
+		return handler.db.ValidateRecipient(username)
+	}
+
+	// Set handlers for the server
+	server.SetDefaultHandlers(handlers)
+
+	// Create server configuration
+	serverConfig := &config.Config{
+		ServerHostname: getEnv("SMTP_SERVER_HOSTNAME", "localhost"),
+		ServerPort:     uint16(serverPort),
+		ServerAddress:  serverAddress,
+		ServerDomain:   getEnv("SMTP_SERVER_DOMAIN", "localhost"),
+		ClientHostname: getEnv("SMTP_CLIENT_HOSTNAME", "localhost"),
+		Relay:          false,
+		RequireTLS:     false,
+	}
+
+	// Start the server using Listen function
+	log.Println("Starting SMTP server...")
+	server.Listen(smtpServer, serverConfig)
 }
 
 func getEnv(key, defaultValue string) string {
