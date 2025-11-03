@@ -21,5 +21,14 @@
   "devDependencies": {
     "@nuxtjs/tailwindcss": "^6.14.0",
     "tailwindcss": "^4.1.16"
+  },
+  "overrides": {
+    "glob": "^10.3.10",
+    "replace-in-file": {
+      "glob": "^10.3.10"
+    },
+    "tailwind-config-viewer": {
+      "replace-in-file": "^8.3.0"
+    }
   }
 }
