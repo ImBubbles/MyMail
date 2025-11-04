@@ -104,6 +104,10 @@ async function bootstrap() {
         }));
         app.enableShutdownHooks();
         const port = process.env.PORT || 3000;
+        if (enableHttps && !httpsOptions) {
+            logger.error('❌ HTTPS enabled but no certificate options available!');
+            throw new Error('HTTPS configuration error');
+        }
         await app.listen(port);
         const protocol = enableHttps ? 'https' : 'http';
         const server = app.getHttpServer();
@@ -111,14 +115,16 @@ async function bootstrap() {
         if (enableHttps && !isActuallyHttps) {
             logger.error('❌ HTTPS was enabled but server is not running HTTPS!');
             logger.error('❌ Check certificate paths and ensure certificates are valid.');
+            logger.error('❌ Server may be running HTTP instead of HTTPS.');
+            process.exit(1);
         }
         else if (enableHttps && isActuallyHttps) {
-            logger.log(`✅ HTTPS is active and working`);
+            logger.log(`✅ HTTPS is active and working on port ${port}`);
         }
         logger.log(`🚀 Application is running on: ${protocol}://localhost:${port}`);
         logger.log(`📡 Frontend URL: ${frontendUrl}`);
         if (enableHttps) {
-            logger.log(`🔒 HTTPS enabled: ${isActuallyHttps ? 'YES' : 'NO'}`);
+            logger.log(`🔒 HTTPS enabled: ${isActuallyHttps ? 'YES ✅' : 'NO ❌'}`);
         }
         process.on('SIGTERM', async () => {
             logger.log('SIGTERM received, shutting down gracefully...');

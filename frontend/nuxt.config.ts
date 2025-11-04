@@ -51,15 +51,21 @@ export default defineNuxtConfig({
     https: httpsConfig,
   },
   nitro: {
-    // Production server configuration (npm run start)
-    port: Number(process.env.PORT ?? (enableHttps ? '443' : '3001')),
-    ...(enableHttps && nitroHttpsConfig ? {
+    // HTTPS configuration for Nitro server (production mode)
+    // Nitro expects file paths, not buffer contents
+    ...(enableHttps && process.env.HTTPS_KEY_PATH && process.env.HTTPS_CERT_PATH ? {
       https: {
-        key: nitroHttpsConfig.key,
-        cert: nitroHttpsConfig.cert,
+        key: process.env.HTTPS_KEY_PATH.startsWith('/') 
+          ? process.env.HTTPS_KEY_PATH 
+          : join(__dirname, process.env.HTTPS_KEY_PATH),
+        cert: process.env.HTTPS_CERT_PATH.startsWith('/')
+          ? process.env.HTTPS_CERT_PATH
+          : join(__dirname, process.env.HTTPS_CERT_PATH),
       }
-    } : {}),
+    } : {}) as any,
   },
+  // Nitro dev server port (for npm run start)
+  // Note: Production port is set via PORT environment variable or defaults to 443 for HTTPS
   runtimeConfig: {
     // Private keys (only available on server-side)
     isHttps: enableHttps,

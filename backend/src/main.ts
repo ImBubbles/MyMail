@@ -51,7 +51,9 @@ async function bootstrap() {
     };
     
     if (enableHttps && httpsOptions) {
-      appOptions.httpsOptions = httpsOptions;
+      // Cast to any to bypass TypeScript type mismatch
+      // NestJS expects HttpsOptions but we're providing https.ServerOptions
+      appOptions.httpsOptions = httpsOptions as any;
     }
     
     const app = await NestFactory.create(AppModule, appOptions);
@@ -88,9 +90,16 @@ async function bootstrap() {
     app.enableShutdownHooks();
 
     const port = process.env.PORT || 3000;
+    
+    // Verify HTTPS is actually working before starting
+    if (enableHttps && !httpsOptions) {
+      logger.error('❌ HTTPS enabled but no certificate options available!');
+      throw new Error('HTTPS configuration error');
+    }
+    
     await app.listen(port);
     
-    // Verify HTTPS is actually working
+    // Verify HTTPS is actually working after start
     const protocol = enableHttps ? 'https' : 'http';
     const server = app.getHttpServer();
     const isActuallyHttps = server instanceof https.Server;
@@ -98,14 +107,16 @@ async function bootstrap() {
     if (enableHttps && !isActuallyHttps) {
       logger.error('❌ HTTPS was enabled but server is not running HTTPS!');
       logger.error('❌ Check certificate paths and ensure certificates are valid.');
+      logger.error('❌ Server may be running HTTP instead of HTTPS.');
+      process.exit(1);
     } else if (enableHttps && isActuallyHttps) {
-      logger.log(`✅ HTTPS is active and working`);
+      logger.log(`✅ HTTPS is active and working on port ${port}`);
     }
     
     logger.log(`🚀 Application is running on: ${protocol}://localhost:${port}`);
     logger.log(`📡 Frontend URL: ${frontendUrl}`);
     if (enableHttps) {
-      logger.log(`🔒 HTTPS enabled: ${isActuallyHttps ? 'YES' : 'NO'}`);
+      logger.log(`🔒 HTTPS enabled: ${isActuallyHttps ? 'YES ✅' : 'NO ❌'}`);
     }
     
     // Handle graceful shutdown
