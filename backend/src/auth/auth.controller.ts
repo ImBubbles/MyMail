@@ -4,10 +4,13 @@ import {
   Body,
   Get,
   Headers,
+  Param,
+  UseGuards,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { CreateAccountDto } from './dto/create-account.dto';
 import { LoginDto } from './dto/login.dto';
+import { ApiKeyGuard } from './guards/api-key.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -38,6 +41,16 @@ export class AuthController {
     return {
       message: 'Token is valid',
       user: validation.user,
+    };
+  }
+
+  @Get('validate-user/:username')
+  @UseGuards(ApiKeyGuard)
+  async validateUser(@Param('username') username: string) {
+    const exists = await this.authService.userExistsByUsername(username);
+    return {
+      exists,
+      username,
     };
   }
 }

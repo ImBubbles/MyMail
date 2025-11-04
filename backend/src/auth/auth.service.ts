@@ -188,6 +188,17 @@ export class AuthService {
     return user;
   }
 
+  /**
+   * Check if a user exists by username
+   * Used for validating recipients in received emails
+   */
+  async userExistsByUsername(username: string): Promise<boolean> {
+    const user = await this.userRepository.findOne({
+      where: { username },
+    });
+    return user !== null;
+  }
+
   private async generateToken(user: User) {
     const payload = {
       sub: user.id,

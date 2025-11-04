@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, InternalServerErrorException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, InternalServerErrorException, Logger, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
@@ -8,6 +8,8 @@ import { join } from 'path';
 import { platform } from 'os';
 import { Mail } from '../entities/mail.entity';
 import { SendMailDto } from './dto/send-mail.dto';
+import { ReceiveEmailDto } from './dto/receive-email.dto';
+import { AuthService } from '../auth/auth.service';
 
 const execFileAsync = promisify(execFile);
 
@@ -19,6 +21,7 @@ export class MailService {
   constructor(
     @InjectRepository(Mail)
     private mailRepository: Repository<Mail>,
+    private authService: AuthService,
   ) {
     // Resolve path to sendsmtp executable
     // From backend/src/mail/mail.service.ts (compiled to backend/dist/mail/mail.service.js)
@@ -207,6 +210,123 @@ export class MailService {
         `Failed to send email: ${error.message || 'Unknown error'}`,
       );
     }
+  }
+
+  /**
+   * Receive email from postsmtp SMTP server
+   * Parses raw email data and stores it in the database
+   */
+  async receiveEmail(receiveEmailDto: ReceiveEmailDto) {
+    const { mailFrom, rcptTo, data } = receiveEmailDto;
+
+    // Decode base64 data if needed
+    let emailData: string;
+    try {
+      // Try to decode as base64 first
+      const decoded = Buffer.from(data, 'base64').toString('utf-8');
+      // If decoding produces valid email-like content, use it
+      if (decoded.includes('\n') || decoded.includes('From:') || decoded.includes('To:')) {
+        emailData = decoded;
+      } else {
+        // If not valid, use as-is (might already be plain text)
+        emailData = data;
+      }
+    } catch {
+      // If base64 decoding fails, use as-is
+      emailData = data;
+    }
+
+    // Parse email to extract headers and body
+    emailData = emailData.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const lines = emailData.split('\n');
+
+    const headers: Record<string, string> = {};
+    let body = '';
+    let inBody = false;
+    let currentHeader = '';
+
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+
+      if (!inBody) {
+        if (trimmedLine === '') {
+          inBody = true;
+          continue;
+        }
+
+        if (line.startsWith(' ') || line.startsWith('\t')) {
+          // Continuation of previous header
+          if (currentHeader) {
+            headers[currentHeader] = (headers[currentHeader] || '') + ' ' + trimmedLine;
+          }
+        } else if (line.includes(':')) {
+          const colonIndex = line.indexOf(':');
+          if (colonIndex > 0) {
+            currentHeader = line.substring(0, colonIndex).trim().toLowerCase();
+            const headerValue = line.substring(colonIndex + 1).trim();
+
+            if (headers[currentHeader]) {
+              headers[currentHeader] = headers[currentHeader] + ', ' + headerValue;
+            } else {
+              headers[currentHeader] = headerValue;
+            }
+          }
+        }
+      } else {
+        body += line + '\n';
+      }
+    }
+
+    // Remove trailing newline from body
+    body = body.trimEnd();
+
+    // Validate recipients exist in the system before storing
+    // This prevents fraudulent emails from being stored
+    for (const recipient of rcptTo) {
+      if (!recipient.includes('@')) {
+        throw new BadRequestException(`Invalid recipient format: ${recipient}`);
+      }
+
+      // Extract username from email (e.g., "user@domain.com" -> "user")
+      const username = recipient.split('@')[0];
+      
+      // Verify user exists in the system - this prevents storing emails for non-existent users
+      const userExists = await this.authService.userExistsByUsername(username);
+      if (!userExists) {
+        throw new BadRequestException(`Recipient user does not exist: ${username}`);
+      }
+    }
+
+    // Store email for each recipient
+    const storedEmails = [];
+
+    for (const recipient of rcptTo) {
+      const uid = uuidv4();
+      const mail = this.mailRepository.create({
+        uid,
+        recipient,
+        sender: mailFrom,
+        headers,
+        message: body,
+      });
+
+      await this.mailRepository.save(mail);
+      storedEmails.push({
+        uid,
+        recipient,
+      });
+
+      this.logger.log(`Stored email from ${mailFrom} to ${recipient} (UID: ${uid})`);
+    }
+
+    if (storedEmails.length === 0) {
+      throw new BadRequestException('No valid recipients provided');
+    }
+
+    return {
+      message: 'Email received and stored successfully',
+      storedEmails,
+    };
   }
 }
 

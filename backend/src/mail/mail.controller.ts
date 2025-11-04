@@ -8,15 +8,17 @@ import {
   UseGuards,
   Request,
   UnauthorizedException,
+  BadRequestException,
 } from '@nestjs/common';
 import { MailService } from './mail.service';
 import { SendMailDto } from './dto/send-mail.dto';
+import { ReceiveEmailDto } from './dto/receive-email.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ApiKeyGuard } from '../auth/guards/api-key.guard';
 import { AuthService } from '../auth/auth.service';
 import { ConfigService } from '@nestjs/config';
 
 @Controller('mail')
-@UseGuards(JwtAuthGuard)
 export class MailController {
   constructor(
     private readonly mailService: MailService,
@@ -50,18 +52,21 @@ export class MailController {
   }
 
   @Get('inbox')
+  @UseGuards(JwtAuthGuard)
   async getInbox(@Request() req: any) {
     const userEmail = await this.getUserEmail(req);
     return this.mailService.getEmailsForUser(userEmail);
   }
 
   @Get('sent')
+  @UseGuards(JwtAuthGuard)
   async getSent(@Request() req: any) {
     const userEmail = await this.getUserEmail(req);
     return this.mailService.getSentEmailsForUser(userEmail);
   }
 
   @Get('search')
+  @UseGuards(JwtAuthGuard)
   async searchEmails(@Query('q') query: string, @Request() req: any) {
     const userEmail = await this.getUserEmail(req);
     if (!query || query.trim() === '') {
@@ -71,12 +76,14 @@ export class MailController {
   }
 
   @Get(':uid')
+  @UseGuards(JwtAuthGuard)
   async getEmailById(@Param('uid') uid: string, @Request() req: any) {
     const userEmail = await this.getUserEmail(req);
     return this.mailService.getEmailById(uid, userEmail);
   }
 
   @Post('send')
+  @UseGuards(JwtAuthGuard)
   async sendEmail(@Body() sendMailDto: SendMailDto, @Request() req: any) {
     // Get user email (always full email: username@domain)
     const senderEmail = await this.getUserEmail(req);
@@ -85,6 +92,17 @@ export class MailController {
       ...sendMailDto,
       sender: senderEmail,
     });
+  }
+
+  /**
+   * Receive email from postsmtp SMTP server
+   * This endpoint is secured with API key authentication
+   * Only postsmtp can call this endpoint to store received emails
+   */
+  @Post('receive')
+  @UseGuards(ApiKeyGuard)
+  async receiveEmail(@Body() receiveEmailDto: ReceiveEmailDto) {
+    return this.mailService.receiveEmail(receiveEmailDto);
   }
 }
 

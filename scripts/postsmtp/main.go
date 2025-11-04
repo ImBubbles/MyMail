@@ -1,13 +1,12 @@
-// postsmtp - SMTP server for receiving emails and storing them in PostgreSQL
+// postsmtp - SMTP server for receiving emails and storing them via backend API
 //
 // This server uses MySMTP library to accept incoming SMTP connections,
-// validate recipients against a PostgreSQL database, and store received emails.
+// validate recipients via the backend API, and store received emails via the backend API.
 //
 // OS Differences:
 //   - On Windows, the compiled binary will be postsmtp.exe
 //   - On Unix-like systems (Linux, macOS), the binary will be postsmtp
 //   - Environment file (.env) loading works cross-platform via godotenv
-//   - Database connections use standard PostgreSQL drivers (cross-platform)
 //
 // Build commands:
 //   - Windows: go build -o postsmtp.exe
@@ -23,7 +22,7 @@ import (
 	"strconv"
 	"strings"
 
-	"postsmtp/db"
+	"postsmtp/api"
 
 	"github.com/ImBubbles/MySMTP/config"
 	"github.com/ImBubbles/MySMTP/mail"
@@ -33,15 +32,17 @@ import (
 )
 
 type MessageHandler struct {
-	db *db.DB
+	apiClient *api.Client
 }
 
-func NewMessageHandler(database *db.DB) *MessageHandler {
-	return &MessageHandler{db: database}
+func NewMessageHandler(apiClient *api.Client) *MessageHandler {
+	return &MessageHandler{
+		apiClient: apiClient,
+	}
 }
 
 func (h *MessageHandler) HandleMessage(conn net.Conn, mailFrom string, rcptTo []string, data []byte) error {
-	// Validate all recipients
+	// Validate all recipients via backend API
 	for _, recipient := range rcptTo {
 		// Extract username from email (e.g., "user@domain.com" -> "user")
 		parts := strings.Split(recipient, "@")
@@ -50,13 +51,22 @@ func (h *MessageHandler) HandleMessage(conn net.Conn, mailFrom string, rcptTo []
 		}
 		username := parts[0]
 
-		if !h.db.ValidateRecipient(username) {
+		exists, err := h.apiClient.ValidateUser(username)
+		if err != nil {
+			log.Printf("ERROR: Failed to validate recipient via API: %v", err)
+			return fmt.Errorf("failed to validate recipient: %v", err)
+		}
+		if !exists {
 			return fmt.Errorf("recipient username not found: %s", username)
 		}
 	}
 
-	// Store the message
-	return h.db.StoreMessage(mailFrom, rcptTo, data)
+	// Store the message via backend API
+	if err := h.apiClient.ReceiveEmail(mailFrom, rcptTo, data); err != nil {
+		log.Printf("ERROR: Failed to store email via backend API: %v", err)
+		return fmt.Errorf("failed to store email: %v", err)
+	}
+	return nil
 }
 
 func main() {
@@ -65,13 +75,8 @@ func main() {
 		log.Println("No .env file found, using environment variables")
 	}
 
-	// Connect to PostgreSQL using db package
-	dbConfig := db.NewConfigFromEnv()
-	database, err := db.New(dbConfig.ConnectionString())
-	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
-	}
-	defer database.Close()
+	// Create API client for validating recipients and storing emails via backend
+	apiClient := api.NewClient()
 
 	// Get SMTP server configuration
 	serverPortStr := getEnv("SMTP_SERVER_PORT", "2525")
@@ -84,9 +89,10 @@ func main() {
 	}
 
 	log.Printf("Starting SMTP server on %s:%s", serverAddress, serverPortStr)
+	log.Printf("Backend API URL: %s", getEnv("BACKEND_API_URL", "http://localhost:3000"))
 
 	// Create message handler
-	handler := NewMessageHandler(database)
+	handler := NewMessageHandler(apiClient)
 
 	// Create SMTP server using MySMTP library v0.0.19
 	// Reference: https://github.com/ImBubbles/MySMTP
@@ -128,7 +134,7 @@ func main() {
 		return handler.HandleMessage(nil, mailFrom, rcptTo, data)
 	}
 
-	// Set email exists checker - validate recipients
+	// Set email exists checker - validate recipients via backend API
 	handlers.EmailExistsChecker = func(email string) bool {
 		// Extract username from email
 		parts := strings.Split(email, "@")
@@ -137,7 +143,11 @@ func main() {
 			return false
 		}
 		username := parts[0]
-		exists := handler.db.ValidateRecipient(username)
+		exists, err := handler.apiClient.ValidateUser(username)
+		if err != nil {
+			log.Printf("EmailExistsChecker: Error validating user %s: %v (returning false)\n", username, err)
+			return false
+		}
 		log.Printf("EmailExistsChecker: Checking email %s -> username: %s, exists: %v\n", email, username, exists)
 		return exists
 	}
