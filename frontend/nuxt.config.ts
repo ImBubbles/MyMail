@@ -52,15 +52,13 @@ export default defineNuxtConfig({
   },
   nitro: {
     // HTTPS configuration for Nitro server (production mode)
-    // Nitro expects file paths, not buffer contents
+    // Use file paths that Nitro will read at runtime
+    // Paths are resolved relative to the frontend directory where npm run start is executed
     ...(enableHttps && process.env.HTTPS_KEY_PATH && process.env.HTTPS_CERT_PATH ? {
       https: {
-        key: process.env.HTTPS_KEY_PATH.startsWith('/') 
-          ? process.env.HTTPS_KEY_PATH 
-          : join(__dirname, process.env.HTTPS_KEY_PATH),
-        cert: process.env.HTTPS_CERT_PATH.startsWith('/')
-          ? process.env.HTTPS_CERT_PATH
-          : join(__dirname, process.env.HTTPS_CERT_PATH),
+        // Use environment variables directly - Nitro will resolve these at runtime
+        key: process.env.HTTPS_KEY_PATH,
+        cert: process.env.HTTPS_CERT_PATH,
       }
     } : {}) as any,
   },
