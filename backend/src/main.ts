@@ -13,10 +13,10 @@ async function bootstrap() {
     // Enable CORS for frontend communication
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
     app.enableCors({
-      origin: frontendUrl,
+      origin: frontendUrl === '*' ? true : frontendUrl,
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
     });
     
     // Enable validation pipes globally

@@ -204,8 +204,8 @@ export class AuthService {
       where: { id: userId },
     });
     
-    // Decrypt email if user exists
-    if (user && user.email) {
+    // Decrypt email if user exists and has encryption key
+    if (user && user.email && user.encryptionKey) {
       user.email = this.decryptUserEmail(user);
     }
     

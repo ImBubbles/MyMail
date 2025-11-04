@@ -67,6 +67,12 @@ export class MailService {
     const decryptedEmails = await Promise.all(
       emails.map(async (email) => {
         try {
+          // Check if message is PGP encrypted
+          if (!email.message.includes('-----BEGIN PGP MESSAGE-----')) {
+            // Message is not encrypted, return as-is
+            return email;
+          }
+
           const privateKey = await this.authService.getDecryptedPrivateKey(user);
           if (!privateKey) {
             this.logger.warn(`Could not decrypt private key for user: ${recipientEmail}`);
@@ -145,7 +151,51 @@ export class MailService {
       order: { createdAt: 'DESC' },
     });
 
-    const allEmails = [...inboxEmails, ...sentEmails];
+    // Get user to decrypt messages for search
+    const user = await this.authService.getUserByEmail(userEmail);
+    if (!user) {
+      this.logger.warn(`User not found for email: ${userEmail}`);
+      return {
+        emails: [],
+        count: 0,
+      };
+    }
+
+    const privateKey = await this.authService.getDecryptedPrivateKey(user);
+
+    // Decrypt all emails for searching
+    const allEmails = await Promise.all(
+      [...inboxEmails, ...sentEmails].map(async (email) => {
+        try {
+          // Check if message is PGP encrypted
+          if (!email.message || !email.message.includes('-----BEGIN PGP MESSAGE-----')) {
+            // Message is not encrypted, return as-is
+            return email;
+          }
+
+          if (privateKey) {
+            // Try to decrypt the message for searching
+            try {
+              const decryptedMessage = await this.pgpService.decryptMessage(
+                email.message,
+                privateKey,
+              );
+              return {
+                ...email,
+                message: decryptedMessage,
+              };
+            } catch {
+              // If decryption fails, use encrypted message (might be from another sender)
+              return email;
+            }
+          }
+          return email;
+        } catch (error) {
+          this.logger.error(`Failed to decrypt email ${email.uid} for search:`, error);
+          return email;
+        }
+      }),
+    );
 
     // Filter emails by query (search in subject, message, sender, recipient)
     const queryLower = query.toLowerCase();
@@ -186,6 +236,12 @@ export class MailService {
 
     if (!email) {
       throw new NotFoundException('Email not found');
+    }
+
+    // Check if message is PGP encrypted
+    if (!email.message.includes('-----BEGIN PGP MESSAGE-----')) {
+      // Message is not encrypted, return as-is
+      return email;
     }
 
     // Decrypt the email message
@@ -402,7 +458,7 @@ export class MailService {
     }
 
     // Store email for each recipient
-    const storedEmails = [];
+    const storedEmails: Array<{ uid: string; recipient: string }> = [];
 
     for (const recipient of rcptTo) {
       // Get recipient's PGP public key

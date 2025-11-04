@@ -15,7 +15,7 @@ export class PgpService {
   }> {
     const { privateKey, publicKey } = await openpgp.generateKey({
       type: 'ecc',
-      curve: 'curve25519',
+      curve: 'ed25519' as any, // Use ed25519 curve for encryption/signing
       userIDs: [{ name: userEmail, email: userEmail }],
       format: 'armored',
     });
@@ -45,35 +45,47 @@ export class PgpService {
 
   /**
    * Decrypts a message using a user's private key
+   * Returns the original message if it's not PGP encrypted
    */
   async decryptMessage(
     encryptedMessage: string,
     privateKeyArmored: string,
     passphrase?: string,
   ): Promise<string> {
-    const privateKey = await openpgp.readPrivateKey({
-      armoredKey: privateKeyArmored,
-    });
-
-    // If passphrase is provided, decrypt the private key
-    let decryptedPrivateKey = privateKey;
-    if (passphrase) {
-      decryptedPrivateKey = await openpgp.decryptKey({
-        privateKey,
-        passphrase,
-      });
+    // Check if message is PGP encrypted (starts with PGP armor header)
+    if (!encryptedMessage.includes('-----BEGIN PGP MESSAGE-----')) {
+      // Message is not encrypted, return as-is
+      return encryptedMessage;
     }
 
-    const message = await openpgp.readMessage({
-      armoredMessage: encryptedMessage,
-    });
+    try {
+      const privateKey = await openpgp.readPrivateKey({
+        armoredKey: privateKeyArmored,
+      });
 
-    const { data: decrypted } = await openpgp.decrypt({
-      message,
-      decryptionKeys: decryptedPrivateKey,
-    });
+      // If passphrase is provided, decrypt the private key
+      let decryptedPrivateKey = privateKey;
+      if (passphrase) {
+        decryptedPrivateKey = await openpgp.decryptKey({
+          privateKey,
+          passphrase,
+        });
+      }
 
-    return decrypted as string;
+      const message = await openpgp.readMessage({
+        armoredMessage: encryptedMessage,
+      });
+
+      const { data: decrypted } = await openpgp.decrypt({
+        message,
+        decryptionKeys: decryptedPrivateKey,
+      });
+
+      return decrypted as string;
+    } catch (error) {
+      // If decryption fails, return original message (might be unencrypted or corrupted)
+      throw new Error(`Failed to decrypt PGP message: ${error.message}`);
+    }
   }
 
   /**
