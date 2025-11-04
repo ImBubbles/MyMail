@@ -45,10 +45,16 @@ async function bootstrap() {
       }
     }
 
-    const app = await NestFactory.create(AppModule, {
+    // Create app with HTTPS options if enabled
+    const appOptions: any = {
       logger: ['error', 'warn', 'log', 'debug', 'verbose'],
-      ...(enableHttps && httpsOptions ? { httpsOptions: httpsOptions as any } : {}),
-    });
+    };
+    
+    if (enableHttps && httpsOptions) {
+      appOptions.httpsOptions = httpsOptions;
+    }
+    
+    const app = await NestFactory.create(AppModule, appOptions);
     
     // Enable cookie parser middleware
     app.use(cookieParser());
@@ -84,9 +90,23 @@ async function bootstrap() {
     const port = process.env.PORT || 3000;
     await app.listen(port);
     
+    // Verify HTTPS is actually working
     const protocol = enableHttps ? 'https' : 'http';
+    const server = app.getHttpServer();
+    const isActuallyHttps = server instanceof https.Server;
+    
+    if (enableHttps && !isActuallyHttps) {
+      logger.error('❌ HTTPS was enabled but server is not running HTTPS!');
+      logger.error('❌ Check certificate paths and ensure certificates are valid.');
+    } else if (enableHttps && isActuallyHttps) {
+      logger.log(`✅ HTTPS is active and working`);
+    }
+    
     logger.log(`🚀 Application is running on: ${protocol}://localhost:${port}`);
     logger.log(`📡 Frontend URL: ${frontendUrl}`);
+    if (enableHttps) {
+      logger.log(`🔒 HTTPS enabled: ${isActuallyHttps ? 'YES' : 'NO'}`);
+    }
     
     // Handle graceful shutdown
     process.on('SIGTERM', async () => {

@@ -15,7 +15,28 @@ export interface MailListResponse {
 export const useMail = () => {
   const { token } = useAuth()
   const config = useRuntimeConfig()
-  const apiBase = config.public.apiBase
+  
+  // Determine API base URL - use config if set, otherwise construct from current location
+  const getApiBase = () => {
+    if (config.public.apiBase) {
+      return config.public.apiBase
+    }
+    
+    // Auto-detect from current page location
+    if (process.client) {
+      const protocol = window.location.protocol
+      const hostname = window.location.hostname
+      // Use backend port 3000, or same port as frontend if custom
+      const port = 3000
+      return `${protocol}//${hostname}:${port}`
+    }
+    
+    // Server-side fallback
+    const protocol = config.public.isHttps ? 'https' : 'http'
+    return `${protocol}://localhost:3000`
+  }
+  
+  const apiBase = getApiBase()
 
   const getAuthHeaders = () => {
     if (!token.value) {

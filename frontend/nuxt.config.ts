@@ -45,7 +45,10 @@ export default defineNuxtConfig({
     isHttps: enableHttps,
     // Public keys (exposed to client-side)
     public: {
-      apiBase: process.env.API_BASE_URL || process.env.NUXT_PUBLIC_API_BASE_URL || 'http://localhost:3000',
+      // Auto-detect HTTPS for API base URL if not explicitly set
+      // If API_BASE_URL or NUXT_PUBLIC_API_BASE_URL is set, use it
+      // Otherwise, construct from current hostname and HTTPS status
+      apiBase: process.env.API_BASE_URL || process.env.NUXT_PUBLIC_API_BASE_URL || undefined,
       isHttps: enableHttps,
     }
   }

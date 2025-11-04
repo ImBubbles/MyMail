@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -8,6 +41,7 @@ const common_1 = require("@nestjs/common");
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const fs_1 = require("fs");
 const path_1 = require("path");
+const https = __importStar(require("https"));
 const app_module_1 = require("./app.module");
 async function bootstrap() {
     const logger = new common_1.Logger('Bootstrap');
@@ -43,10 +77,13 @@ async function bootstrap() {
                 throw new Error('HTTPS enabled but certificate paths not configured');
             }
         }
-        const app = await core_1.NestFactory.create(app_module_1.AppModule, {
+        const appOptions = {
             logger: ['error', 'warn', 'log', 'debug', 'verbose'],
-            ...(enableHttps && httpsOptions ? { httpsOptions: httpsOptions } : {}),
-        });
+        };
+        if (enableHttps && httpsOptions) {
+            appOptions.httpsOptions = httpsOptions;
+        }
+        const app = await core_1.NestFactory.create(app_module_1.AppModule, appOptions);
         app.use((0, cookie_parser_1.default)());
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
         const frontendUrls = frontendUrl === '*'
@@ -69,8 +106,20 @@ async function bootstrap() {
         const port = process.env.PORT || 3000;
         await app.listen(port);
         const protocol = enableHttps ? 'https' : 'http';
+        const server = app.getHttpServer();
+        const isActuallyHttps = server instanceof https.Server;
+        if (enableHttps && !isActuallyHttps) {
+            logger.error('❌ HTTPS was enabled but server is not running HTTPS!');
+            logger.error('❌ Check certificate paths and ensure certificates are valid.');
+        }
+        else if (enableHttps && isActuallyHttps) {
+            logger.log(`✅ HTTPS is active and working`);
+        }
         logger.log(`🚀 Application is running on: ${protocol}://localhost:${port}`);
         logger.log(`📡 Frontend URL: ${frontendUrl}`);
+        if (enableHttps) {
+            logger.log(`🔒 HTTPS enabled: ${isActuallyHttps ? 'YES' : 'NO'}`);
+        }
         process.on('SIGTERM', async () => {
             logger.log('SIGTERM received, shutting down gracefully...');
             await app.close();
