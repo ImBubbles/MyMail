@@ -6,8 +6,7 @@ import { dirname, join } from 'path'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
-// HTTPS configuration - requires certificate files
-// Using the same approach as backend - read certificates as buffers
+// HTTPS configuration - EXACTLY matching backend approach
 const enableHttps = process.env.ENABLE_HTTPS === 'true'
 let httpsConfig: any = false
 let nitroHttpsConfig: any = undefined
@@ -15,35 +14,40 @@ let nitroHttpsConfig: any = undefined
 if (enableHttps) {
   const httpsKeyPath = process.env.HTTPS_KEY_PATH
   const httpsCertPath = process.env.HTTPS_CERT_PATH
-  
-  if (!httpsKeyPath || !httpsCertPath) {
-    throw new Error('HTTPS enabled but HTTPS_KEY_PATH and HTTPS_CERT_PATH must be provided in .env file')
-  }
-  
-  // Resolve paths using same logic as backend
-  // Backend uses: join(__dirname, '..', httpsKeyPath) for relative paths
-  // For frontend, resolve from __dirname (where nuxt.config.ts is) 
-  // For absolute paths (starting with / or C:), use as-is
-  const keyPath = httpsKeyPath.startsWith('/') || httpsKeyPath.match(/^[A-Z]:/)
-    ? httpsKeyPath 
-    : join(__dirname, httpsKeyPath)
-  const certPath = httpsCertPath.startsWith('/') || httpsCertPath.match(/^[A-Z]:/)
-    ? httpsCertPath
-    : join(__dirname, httpsCertPath)
-  
-  try {
-    // Read certificates as buffers (same as backend)
-    const certContents = {
-      key: readFileSync(keyPath),
-      cert: readFileSync(certPath),
+
+  // Backend checks: if (httpsKeyPath && httpsCertPath)
+  if (httpsKeyPath && httpsCertPath) {
+    // Use provided certificate files
+    try {
+      // Backend path resolution: join(__dirname, '..', httpsKeyPath)
+      // For frontend, __dirname is where nuxt.config.ts is, so we go up one level too
+      // But wait - in production build, __dirname might be different
+      // Actually, backend goes from dist/ to backend/, frontend should go from .nuxt/ or .output/ to frontend/
+      // Let's match backend exactly: join(__dirname, '..', path)
+      const keyPath = httpsKeyPath.startsWith('/') 
+        ? httpsKeyPath 
+        : join(__dirname, '..', httpsKeyPath)
+      const certPath = httpsCertPath.startsWith('/')
+        ? httpsCertPath
+        : join(__dirname, '..', httpsCertPath)
+
+      // Backend creates: httpsOptions = { key: readFileSync(keyPath), cert: readFileSync(certPath) }
+      nitroHttpsConfig = {
+        key: readFileSync(keyPath),
+        cert: readFileSync(certPath),
+      }
+      
+      httpsConfig = nitroHttpsConfig
+      console.log('✅ HTTPS enabled with provided certificates')
+    } catch (error) {
+      console.error('❌ Failed to read HTTPS certificate files:', error)
+      console.error('⚠️  HTTPS enabled but certificates not found. Please provide valid certificates or disable HTTPS.')
+      throw new Error('HTTPS enabled but certificates not found')
     }
-    
-    httpsConfig = certContents
-    nitroHttpsConfig = certContents
-    console.log('✅ HTTPS certificates loaded successfully')
-  } catch (error) {
-    console.error('❌ Failed to read HTTPS certificate files:', error)
-    throw new Error(`HTTPS enabled but cannot read certificate files. Key: ${keyPath}, Cert: ${certPath}`)
+  } else {
+    console.error('⚠️  ENABLE_HTTPS=true but HTTPS_KEY_PATH and HTTPS_CERT_PATH not provided')
+    console.error('⚠️  Please provide certificate paths or disable HTTPS')
+    throw new Error('HTTPS enabled but certificate paths not configured')
   }
 }
 
@@ -57,13 +61,10 @@ export default defineNuxtConfig({
   },
   nitro: {
     // HTTPS configuration for Nitro server (production mode)
-    // Resolve paths to absolute paths at build time (same approach as backend)
-    // Backend: join(__dirname, '..', path) resolves from dist/ to backend/
-    // Frontend: We resolve from nuxt.config.ts location to frontend root
+    // Backend passes: appOptions.httpsOptions = httpsOptions as any
+    // Frontend passes to Nitro's https config
     ...(enableHttps && nitroHttpsConfig ? {
       https: {
-        // Use the already-loaded certificate buffers (same as backend)
-        // This ensures certificates are available regardless of build output location
         key: nitroHttpsConfig.key,
         cert: nitroHttpsConfig.cert,
       }
