@@ -20,16 +20,16 @@ if (enableHttps) {
     // Use provided certificate files
     try {
       // Backend path resolution: join(__dirname, '..', httpsKeyPath)
-      // For frontend, __dirname is where nuxt.config.ts is, so we go up one level too
-      // But wait - in production build, __dirname might be different
-      // Actually, backend goes from dist/ to backend/, frontend should go from .nuxt/ or .output/ to frontend/
-      // Let's match backend exactly: join(__dirname, '..', path)
-      const keyPath = httpsKeyPath.startsWith('/') 
+      // Backend's __dirname is in dist/, so join(__dirname, '..') = backend/
+      // For frontend, __dirname is where nuxt.config.ts is (frontend/)
+      // So we resolve relative to __dirname (frontend/), not __dirname/..
+      // This way ../certs resolves to frontend/../certs = ~/certs
+      const keyPath = httpsKeyPath.startsWith('/') || httpsKeyPath.match(/^[A-Z]:/)
         ? httpsKeyPath 
-        : join(__dirname, '..', httpsKeyPath)
-      const certPath = httpsCertPath.startsWith('/')
+        : join(__dirname, httpsKeyPath)
+      const certPath = httpsCertPath.startsWith('/') || httpsCertPath.match(/^[A-Z]:/)
         ? httpsCertPath
-        : join(__dirname, '..', httpsCertPath)
+        : join(__dirname, httpsCertPath)
 
       // Backend creates: httpsOptions = { key: readFileSync(keyPath), cert: readFileSync(certPath) }
       nitroHttpsConfig = {
