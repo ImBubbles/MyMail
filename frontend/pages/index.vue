@@ -55,6 +55,18 @@
               placeholder="Enter your password"
             />
           </div>
+
+          <div class="flex items-center">
+            <input
+              id="rememberMe"
+              v-model="form.rememberMe"
+              type="checkbox"
+              class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+            />
+            <label for="rememberMe" class="ml-2 block text-sm text-gray-700">
+              Remember me
+            </label>
+          </div>
         </div>
 
         <div>
@@ -95,6 +107,7 @@ const { login } = useAuth()
 const form = reactive({
   username: '',
   password: '',
+  rememberMe: false,
 })
 
 const error = ref('')
@@ -110,6 +123,7 @@ const handleLogin = async () => {
     await login({
       username: form.username,
       password: form.password,
+      rememberMe: form.rememberMe,
     })
     
     success.value = 'Login successful! 🎉 Redirecting you now...'

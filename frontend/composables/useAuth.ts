@@ -13,6 +13,7 @@ export const useAuth = () => {
   interface LoginDto {
     username: string
     password: string
+    rememberMe?: boolean
   }
 
   interface RegisterDto {
@@ -27,18 +28,26 @@ export const useAuth = () => {
     token: string
   }
 
-  // Cookie configuration
-  const cookieOptions = {
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+  // Cookie configuration - will be updated based on rememberMe
+  // Detect if we're using HTTPS (client-side check)
+  const isHttps = process.client 
+    ? window.location.protocol === 'https:'
+    : config.public.isHttps || false
+
+  const getCookieOptions = (rememberMe: boolean = false) => ({
+    maxAge: rememberMe 
+      ? 60 * 60 * 24 * 30 // 30 days if remember me
+      : 60 * 60 * 24, // 1 day if not
     sameSite: 'lax' as const,
-    secure: false, // Set to true in production with HTTPS
+    secure: isHttps, // Set to true when using HTTPS
     path: '/',
-  }
+  })
 
-  // Initialize from cookies
-  const cookieToken = useCookie<string | null>('auth_token', cookieOptions)
-  const cookieUser = useCookie<string | null>('auth_user', cookieOptions)
+  // Initialize from cookies (use default 7 days for existing cookies)
+  const cookieToken = useCookie<string | null>('auth_token', getCookieOptions(true))
+  const cookieUser = useCookie<string | null>('auth_user', getCookieOptions(true))
 
+  // Initialize auth state from cookies on load
   if (cookieToken.value) {
     token.value = cookieToken.value
   }
@@ -51,13 +60,70 @@ export const useAuth = () => {
     }
   }
 
-  const setAuth = (authData: { user: User; token: string }) => {
+  const validateToken = async (): Promise<boolean> => {
+    // Try to get token from state first, then from cookie
+    const tokenToValidate = token.value || cookieToken.value
+    
+    if (!tokenToValidate) return false
+
+    try {
+      const response = await $fetch<{ valid: boolean; user: User }>(
+        `${apiBase}/auth/validate`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${tokenToValidate}`,
+          },
+          credentials: 'include', // Include cookies
+        }
+      )
+
+      if (response.valid) {
+        user.value = response.user
+        token.value = tokenToValidate
+        
+        // Update cookies with latest data
+        const cookieOpts = getCookieOptions(true) // Use longer expiration for validated tokens
+        const tokenCookie = useCookie<string | null>('auth_token', cookieOpts)
+        const userCookie = useCookie<string | null>('auth_user', cookieOpts)
+        
+        tokenCookie.value = tokenToValidate
+        userCookie.value = JSON.stringify(response.user)
+        return true
+      }
+      return false
+    } catch (error) {
+      clearAuth()
+      return false
+    }
+  }
+
+  // Function to initialize auth from cookies (called on app load)
+  const initializeAuth = async () => {
+    if (cookieToken.value) {
+      token.value = cookieToken.value
+      // Validate the token to ensure it's still valid
+      if (process.client) {
+        const valid = await validateToken()
+        if (!valid) {
+          // Token is invalid, clear everything
+          clearAuth()
+        }
+      }
+    }
+  }
+
+  const setAuth = (authData: { user: User; token: string }, rememberMe: boolean = false) => {
     user.value = authData.user
     token.value = authData.token
     
-    // Set cookies
-    cookieToken.value = authData.token
-    cookieUser.value = JSON.stringify(authData.user)
+    // Set cookies with appropriate expiration
+    const cookieOpts = getCookieOptions(rememberMe)
+    const tokenCookie = useCookie<string | null>('auth_token', cookieOpts)
+    const userCookie = useCookie<string | null>('auth_user', cookieOpts)
+    
+    tokenCookie.value = authData.token
+    userCookie.value = JSON.stringify(authData.user)
   }
 
   const clearAuth = () => {
@@ -77,10 +143,16 @@ export const useAuth = () => {
         credentials: 'include', // Include cookies
       })
       
-      setAuth({ user: response.user, token: response.token })
+      setAuth({ user: response.user, token: response.token }, credentials.rememberMe || false)
       return response
     } catch (error: any) {
-      // Handle NestJS validation errors
+      // Handle network errors (Failed to fetch, connection refused, etc.)
+      if (error.name === 'FetchError' || 
+          error.message?.includes('fetch') || 
+          error.message?.includes('network') ||
+          error.message?.includes('Failed to fetch')) {
+        throw new Error('Cannot connect to server. Please check if the backend is running and the API URL is correct.')
+      }
       const message = error.data?.message || error.message || 'Login failed. Please try again.'
       throw new Error(message)
     }
@@ -94,7 +166,7 @@ export const useAuth = () => {
         credentials: 'include', // Include cookies
       })
       
-      setAuth({ user: response.user, token: response.token })
+      setAuth({ user: response.user, token: response.token }, false) // Default to not remember on signup
       return response
     } catch (error: any) {
       // Handle NestJS validation errors
@@ -116,40 +188,6 @@ export const useAuth = () => {
 
   const isAuthenticated = computed(() => !!token.value && !!user.value)
 
-  const validateToken = async (): Promise<boolean> => {
-    if (!token.value) return false
-
-    try {
-      const response = await $fetch<{ valid: boolean; user: User }>(
-        `${apiBase}/auth/validate`,
-        {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token.value}`,
-          },
-          credentials: 'include', // Include cookies
-        }
-      )
-
-      if (response.valid) {
-        user.value = response.user
-        // Update cookie with latest user data
-        const cookieUser = useCookie<string | null>('auth_user', {
-          maxAge: 60 * 60 * 24 * 7,
-          sameSite: 'lax' as const,
-          secure: false,
-          path: '/',
-        })
-        cookieUser.value = JSON.stringify(response.user)
-        return true
-      }
-      return false
-    } catch (error) {
-      clearAuth()
-      return false
-    }
-  }
-
   return {
     user: readonly(user),
     token: readonly(token),
@@ -158,6 +196,7 @@ export const useAuth = () => {
     register,
     logout,
     validateToken,
+    initializeAuth,
   }
 }
 

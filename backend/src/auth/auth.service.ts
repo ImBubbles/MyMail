@@ -119,7 +119,7 @@ export class AuthService {
   }
 
   async login(loginDto: LoginDto) {
-    const { username, password } = loginDto;
+    const { username, password, rememberMe } = loginDto;
 
     // Find user by username first
     let user = await this.userRepository.findOne({
@@ -151,8 +151,8 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Generate JWT token
-    const token = await this.generateToken(user);
+    // Generate JWT token with appropriate expiration based on rememberMe
+    const token = await this.generateToken(user, rememberMe);
 
     // Decrypt email before returning
     const decryptedEmail = this.decryptUserEmail(user);
@@ -289,14 +289,19 @@ export class AuthService {
     }
   }
 
-  private async generateToken(user: User) {
+  private async generateToken(user: User, rememberMe?: boolean) {
     const payload = {
       sub: user.id,
       username: user.username,
     };
 
     const secret = this.configService.get<string>('JWT_SECRET', 'default-secret');
-    const expiresIn = this.configService.get<string>('JWT_EXPIRES_IN', '7d');
+    
+    // Set expiration based on rememberMe
+    // If rememberMe is true, use 30 days, otherwise use 1 day
+    const expiresIn = rememberMe 
+      ? '30d' 
+      : this.configService.get<string>('JWT_EXPIRES_IN', '1d');
 
     return this.jwtService.signAsync(payload, {
       secret,

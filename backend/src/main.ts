@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -10,10 +11,20 @@ async function bootstrap() {
       logger: ['error', 'warn', 'log', 'debug', 'verbose'],
     });
     
+    // Enable cookie parser middleware
+    app.use(cookieParser());
+    
     // Enable CORS for frontend communication
+    // Support both HTTP and HTTPS frontend URLs
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+    const frontendUrls = frontendUrl === '*' 
+      ? true 
+      : frontendUrl.includes(',')
+        ? frontendUrl.split(',').map(url => url.trim())
+        : [frontendUrl];
+    
     app.enableCors({
-      origin: frontendUrl === '*' ? true : frontendUrl,
+      origin: frontendUrls,
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
