@@ -30,29 +30,31 @@ export class AuthService {
     const hostname = this.configService.get<string>('HOSTNAME', 'localhost');
     const userEmail = email || `${username}@${hostname}`;
 
-    // Encrypt email before checking for duplicates
-    const encryptedEmail = this.encryptionService.encrypt(userEmail);
-
-    // Check if user already exists - decrypt emails for comparison
-    const allUsers = await this.userRepository.find({
+    // Check if user already exists
+    const existingUser = await this.userRepository.findOne({
       where: [{ username }],
     });
 
     // Check username conflict
-    if (allUsers.length > 0) {
+    if (existingUser) {
       throw new ConflictException(
         'User with this username already exists',
       );
     }
 
-    // Check email conflict by decrypting and comparing
+    // Check email conflict by decrypting all emails
     const usersWithEmails = await this.userRepository.find({
       where: {},
     });
     const emailConflict = usersWithEmails.some((user) => {
-      if (!user.email) return false;
-      const decryptedEmail = this.encryptionService.decrypt(user.email);
-      return decryptedEmail === userEmail;
+      if (!user.email || !user.encryptionKey) return false;
+      try {
+        const decryptedEmail = this.decryptUserEmail(user);
+        return decryptedEmail === userEmail;
+      } catch {
+        // If decryption fails, skip this user
+        return false;
+      }
     });
 
     if (emailConflict) {
@@ -61,16 +63,27 @@ export class AuthService {
       );
     }
 
+    // Generate user-specific encryption key
+    const userKey = this.encryptionService.generateUserKey();
+    const encryptedUserKey = this.encryptionService.encryptUserKey(userKey);
+
+    // Encrypt email with user's key
+    const encryptedEmail = this.encryptionService.encryptWithUserKey(
+      userEmail,
+      userKey,
+    );
+
     // Generate salt and hash password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Create new user with encrypted email
+    // Create new user with encrypted email and encrypted user key
     const user = this.userRepository.create({
       username,
       password: hashedPassword,
       salt,
-      email: encryptedEmail, // Store encrypted email
+      email: encryptedEmail,
+      encryptionKey: encryptedUserKey,
     });
 
     await this.userRepository.save(user);
@@ -78,17 +91,12 @@ export class AuthService {
     // Generate JWT token
     const token = await this.generateToken(user);
 
-    // Decrypt email before returning
-    const decryptedEmail = user.email
-      ? this.encryptionService.decrypt(user.email)
-      : null;
-
     return {
       message: 'Account created successfully',
       user: {
         id: user.id,
         username: user.username,
-        email: decryptedEmail,
+        email: userEmail,
       },
       token,
     };
@@ -106,9 +114,13 @@ export class AuthService {
     if (!user) {
       const allUsers = await this.userRepository.find();
       user = allUsers.find((u) => {
-        if (!u.email) return false;
-        const decryptedEmail = this.encryptionService.decrypt(u.email);
-        return decryptedEmail === username;
+        if (!u.email || !u.encryptionKey) return false;
+        try {
+          const decryptedEmail = this.decryptUserEmail(u);
+          return decryptedEmail === username;
+        } catch {
+          return false;
+        }
       }) || null;
     }
 
@@ -127,9 +139,7 @@ export class AuthService {
     const token = await this.generateToken(user);
 
     // Decrypt email before returning
-    const decryptedEmail = user.email
-      ? this.encryptionService.decrypt(user.email)
-      : null;
+    const decryptedEmail = this.decryptUserEmail(user);
 
     return {
       message: 'Login successful',
@@ -158,9 +168,7 @@ export class AuthService {
       }
 
       // Decrypt email before returning
-      const decryptedEmail = user.email
-        ? this.encryptionService.decrypt(user.email)
-        : null;
+      const decryptedEmail = this.decryptUserEmail(user);
 
       return {
         valid: true,
@@ -182,7 +190,7 @@ export class AuthService {
     
     // Decrypt email if user exists
     if (user && user.email) {
-      user.email = this.encryptionService.decrypt(user.email);
+      user.email = this.decryptUserEmail(user);
     }
     
     return user;
@@ -197,6 +205,27 @@ export class AuthService {
       where: { username },
     });
     return user !== null;
+  }
+
+  /**
+   * Decrypts a user's email using their per-user encryption key
+   */
+  private decryptUserEmail(user: User): string | null {
+    if (!user.email || !user.encryptionKey) {
+      return null;
+    }
+
+    try {
+      // Decrypt the user's encryption key with master key
+      const userKey = this.encryptionService.decryptUserKey(
+        user.encryptionKey,
+      );
+      // Decrypt the email with the user's key
+      return this.encryptionService.decryptWithUserKey(user.email, userKey);
+    } catch (error) {
+      console.error(`Failed to decrypt email for user ${user.id}:`, error);
+      return null;
+    }
   }
 
   private async generateToken(user: User) {

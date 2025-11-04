@@ -23,6 +23,9 @@ export class User {
   @Column({ type: 'text', nullable: true })
   email: string | null;
 
+  @Column({ type: 'text', nullable: true })
+  encryptionKey: string | null; // Encrypted user-specific encryption key (encrypted with master key)
+
   @CreateDateColumn()
   createdAt: Date;
 
