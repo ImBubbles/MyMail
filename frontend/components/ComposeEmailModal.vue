@@ -16,9 +16,14 @@
             @click.stop
           >
             <!-- Header -->
-            <div class="border-b border-gray-200 px-6 py-4">
+            <div class="border-b border-gray-200 px-6 py-4 bg-gradient-to-r from-indigo-50 to-purple-50">
               <div class="flex items-center justify-between">
-                <h3 class="text-lg font-semibold text-gray-900">Compose Email</h3>
+                <div class="flex items-center space-x-3">
+                  <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                  <h3 class="text-lg font-semibold text-gray-900">Compose Email</h3>
+                </div>
                 <button
                   @click="closeModal"
                   class="text-gray-400 hover:text-gray-500 focus:outline-none"
@@ -62,7 +67,7 @@
                     type="email"
                     required
                     placeholder="recipient@example.com"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
                   />
                 </div>
 
@@ -79,7 +84,7 @@
                     v-model="ccInput"
                     type="text"
                     placeholder="cc1@example.com, cc2@example.com"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
                   />
                   <p class="mt-1 text-xs text-gray-500">
                     Separate multiple emails with commas
@@ -99,7 +104,7 @@
                     v-model="bccInput"
                     type="text"
                     placeholder="bcc1@example.com, bcc2@example.com"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
                   />
                   <p class="mt-1 text-xs text-gray-500">
                     Separate multiple emails with commas
@@ -120,7 +125,7 @@
                     type="text"
                     required
                     placeholder="Email subject"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
                   />
                 </div>
 
@@ -138,7 +143,7 @@
                     required
                     rows="10"
                     placeholder="Enter your message here..."
-                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none transition-all"
                   />
                 </div>
 
@@ -147,14 +152,14 @@
                   <button
                     type="button"
                     @click="closeModal"
-                    class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     :disabled="loading"
-                    class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    class="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-indigo-600 to-purple-600 rounded-lg hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg"
                   >
                     <span v-if="!loading">Send</span>
                     <span v-else>Sending...</span>
