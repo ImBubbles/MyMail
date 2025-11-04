@@ -6,29 +6,39 @@ import { dirname, join } from 'path'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
-// HTTPS configuration
+// HTTPS configuration - requires certificate files
 const enableHttps = process.env.ENABLE_HTTPS === 'true'
 let httpsConfig: any = false
+let nitroHttpsConfig: any = undefined
 
 if (enableHttps) {
   const httpsKeyPath = process.env.HTTPS_KEY_PATH
   const httpsCertPath = process.env.HTTPS_CERT_PATH
   
-  if (httpsKeyPath && httpsCertPath) {
-    // Use provided certificate files
-    try {
-      httpsConfig = {
-        key: readFileSync(join(__dirname, httpsKeyPath)),
-        cert: readFileSync(join(__dirname, httpsCertPath)),
-      }
-    } catch (error) {
-      console.warn('Failed to read HTTPS certificate files, will auto-generate:', error)
-      // Auto-generate self-signed certificate
-      httpsConfig = true
+  if (!httpsKeyPath || !httpsCertPath) {
+    throw new Error('HTTPS enabled but HTTPS_KEY_PATH and HTTPS_CERT_PATH must be provided in .env file')
+  }
+  
+  // Resolve paths (support both relative and absolute)
+  const keyPath = httpsKeyPath.startsWith('/') 
+    ? httpsKeyPath 
+    : join(__dirname, httpsKeyPath)
+  const certPath = httpsCertPath.startsWith('/')
+    ? httpsCertPath
+    : join(__dirname, httpsCertPath)
+  
+  try {
+    const certContents = {
+      key: readFileSync(keyPath),
+      cert: readFileSync(certPath),
     }
-  } else {
-    // Auto-generate self-signed certificate for development
-    httpsConfig = true
+    
+    httpsConfig = certContents
+    nitroHttpsConfig = certContents
+    console.log('✅ HTTPS certificates loaded successfully')
+  } catch (error) {
+    console.error('❌ Failed to read HTTPS certificate files:', error)
+    throw new Error(`HTTPS enabled but cannot read certificate files. Key: ${keyPath}, Cert: ${certPath}`)
   }
 }
 
@@ -39,6 +49,16 @@ export default defineNuxtConfig({
   devServer: {
     port: Number(process.env.PORT ?? (enableHttps ? '443' : '3001')),
     https: httpsConfig,
+  },
+  nitro: {
+    // Production server configuration (npm run start)
+    port: Number(process.env.PORT ?? (enableHttps ? '443' : '3001')),
+    ...(enableHttps && nitroHttpsConfig ? {
+      https: {
+        key: nitroHttpsConfig.key,
+        cert: nitroHttpsConfig.cert,
+      }
+    } : {}),
   },
   runtimeConfig: {
     // Private keys (only available on server-side)
