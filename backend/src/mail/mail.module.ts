@@ -6,6 +6,8 @@ import { MailController } from './mail.controller';
 import { MailService } from './mail.service';
 import { Mail } from '../entities/mail.entity';
 import { AuthModule } from '../auth/auth.module';
+import { PgpService } from '../utils/pgp.service';
+import { EncryptionService } from '../utils/encryption.service';
 
 @Module({
   imports: [
@@ -23,7 +25,7 @@ import { AuthModule } from '../auth/auth.module';
     }),
   ],
   controllers: [MailController],
-  providers: [MailService],
+  providers: [MailService, PgpService, EncryptionService],
   exports: [MailService],
 })
 export class MailModule {}

@@ -7,6 +7,7 @@ import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { ApiKeyGuard } from './guards/api-key.guard';
 import { EncryptionService } from '../utils/encryption.service';
+import { PgpService } from '../utils/pgp.service';
 import { User } from '../entities/user.entity';
 
 @Module({
@@ -24,7 +25,7 @@ import { User } from '../entities/user.entity';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtAuthGuard, ApiKeyGuard, EncryptionService],
+  providers: [AuthService, JwtAuthGuard, ApiKeyGuard, EncryptionService, PgpService],
   exports: [AuthService, JwtAuthGuard, ApiKeyGuard],
 })
 export class AuthModule {}

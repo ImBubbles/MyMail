@@ -12,6 +12,7 @@ import { User } from '../entities/user.entity';
 import { CreateAccountDto } from './dto/create-account.dto';
 import { LoginDto } from './dto/login.dto';
 import { EncryptionService } from '../utils/encryption.service';
+import { PgpService } from '../utils/pgp.service';
 
 @Injectable()
 export class AuthService {
@@ -21,6 +22,7 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private encryptionService: EncryptionService,
+    private pgpService: PgpService,
   ) {}
 
   async createAccount(createAccountDto: CreateAccountDto) {
@@ -73,17 +75,31 @@ export class AuthService {
       userKey,
     );
 
+    // Generate PGP key pair for the user
+    const { publicKey, privateKey } = await this.pgpService.generateKeyPair(
+      userEmail,
+      0, // Will be updated after user is saved
+    );
+
+    // Encrypt PGP private key with user's encryption key
+    const encryptedPrivateKey = this.pgpService.encryptPrivateKey(
+      privateKey,
+      userKey,
+    );
+
     // Generate salt and hash password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Create new user with encrypted email and encrypted user key
+    // Create new user with encrypted email, encrypted user key, and PGP keys
     const user = this.userRepository.create({
       username,
       password: hashedPassword,
       salt,
       email: encryptedEmail,
       encryptionKey: encryptedUserKey,
+      pgpPublicKey: publicKey,
+      pgpPrivateKey: encryptedPrivateKey,
     });
 
     await this.userRepository.save(user);
@@ -205,6 +221,51 @@ export class AuthService {
       where: { username },
     });
     return user !== null;
+  }
+
+  /**
+   * Get user by email address (decrypted)
+   * Used to get recipient's PGP public key for encryption
+   */
+  async getUserByEmail(email: string): Promise<User | null> {
+    const allUsers = await this.userRepository.find();
+    for (const user of allUsers) {
+      if (!user.email || !user.encryptionKey) continue;
+      try {
+        const decryptedEmail = this.decryptUserEmail(user);
+        if (decryptedEmail === email) {
+          return user;
+        }
+      } catch {
+        continue;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Get user's PGP public key by email
+   */
+  async getPublicKeyByEmail(email: string): Promise<string | null> {
+    const user = await this.getUserByEmail(email);
+    return user?.pgpPublicKey || null;
+  }
+
+  /**
+   * Get user's decrypted PGP private key
+   */
+  async getDecryptedPrivateKey(user: User): Promise<string | null> {
+    if (!user.pgpPrivateKey || !user.encryptionKey) {
+      return null;
+    }
+
+    try {
+      const userKey = this.encryptionService.decryptUserKey(user.encryptionKey);
+      return this.pgpService.decryptPrivateKey(user.pgpPrivateKey, userKey);
+    } catch (error) {
+      console.error(`Failed to decrypt PGP private key for user ${user.id}:`, error);
+      return null;
+    }
   }
 
   /**

@@ -26,6 +26,12 @@ export class User {
   @Column({ type: 'text', nullable: true })
   encryptionKey: string | null; // Encrypted user-specific encryption key (encrypted with master key)
 
+  @Column({ type: 'text', nullable: true })
+  pgpPublicKey: string | null; // PGP public key (stored in plain text, can be shared)
+
+  @Column({ type: 'text', nullable: true })
+  pgpPrivateKey: string | null; // Encrypted PGP private key (encrypted with user's encryption key)
+
   @CreateDateColumn()
   createdAt: Date;
 

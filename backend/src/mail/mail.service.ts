@@ -10,6 +10,7 @@ import { Mail } from '../entities/mail.entity';
 import { SendMailDto } from './dto/send-mail.dto';
 import { ReceiveEmailDto } from './dto/receive-email.dto';
 import { AuthService } from '../auth/auth.service';
+import { PgpService } from '../utils/pgp.service';
 
 const execFileAsync = promisify(execFile);
 
@@ -22,6 +23,7 @@ export class MailService {
     @InjectRepository(Mail)
     private mailRepository: Repository<Mail>,
     private authService: AuthService,
+    private pgpService: PgpService,
   ) {
     // Resolve path to sendsmtp executable
     // From backend/src/mail/mail.service.ts (compiled to backend/dist/mail/mail.service.js)
@@ -52,10 +54,45 @@ export class MailService {
       order: { createdAt: 'DESC' },
     });
 
-    this.logger.log(`Found ${emails.length} emails for recipient: ${recipientEmail}`);
+    // Decrypt emails for the user
+    const user = await this.authService.getUserByEmail(recipientEmail);
+    if (!user) {
+      this.logger.warn(`User not found for email: ${recipientEmail}`);
+      return {
+        emails: [],
+        count: 0,
+      };
+    }
+
+    const decryptedEmails = await Promise.all(
+      emails.map(async (email) => {
+        try {
+          const privateKey = await this.authService.getDecryptedPrivateKey(user);
+          if (!privateKey) {
+            this.logger.warn(`Could not decrypt private key for user: ${recipientEmail}`);
+            return email; // Return encrypted email if decryption fails
+          }
+
+          const decryptedMessage = await this.pgpService.decryptMessage(
+            email.message,
+            privateKey,
+          );
+
+          return {
+            ...email,
+            message: decryptedMessage,
+          };
+        } catch (error) {
+          this.logger.error(`Failed to decrypt email ${email.uid}:`, error);
+          return email; // Return encrypted email if decryption fails
+        }
+      }),
+    );
+
+    this.logger.log(`Found ${decryptedEmails.length} emails for recipient: ${recipientEmail}`);
     return {
-      emails,
-      count: emails.length,
+      emails: decryptedEmails,
+      count: decryptedEmails.length,
     };
   }
 
@@ -65,9 +102,35 @@ export class MailService {
       order: { createdAt: 'DESC' },
     });
 
+    // Decrypt sent emails (sender uses their own private key)
+    const user = await this.authService.getUserByEmail(senderEmail);
+    if (!user) {
+      this.logger.warn(`User not found for email: ${senderEmail}`);
+      return {
+        emails: [],
+        count: 0,
+      };
+    }
+
+    const decryptedEmails = await Promise.all(
+      emails.map(async (email) => {
+        try {
+          // For sent emails, we need to decrypt with sender's private key
+          // But the message was encrypted with recipient's public key
+          // So we can't decrypt it here - we'd need recipient's private key
+          // For now, return the encrypted message
+          // In a real implementation, you might want to store a copy encrypted with sender's key
+          return email;
+        } catch (error) {
+          this.logger.error(`Failed to process sent email ${email.uid}:`, error);
+          return email;
+        }
+      }),
+    );
+
     return {
-      emails,
-      count: emails.length,
+      emails: decryptedEmails,
+      count: decryptedEmails.length,
     };
   }
 
@@ -125,11 +188,52 @@ export class MailService {
       throw new NotFoundException('Email not found');
     }
 
-    return email;
+    // Decrypt the email message
+    const user = await this.authService.getUserByEmail(recipientEmail);
+    if (!user) {
+      this.logger.warn(`User not found for email: ${recipientEmail}`);
+      return email; // Return encrypted email if user not found
+    }
+
+    try {
+      const privateKey = await this.authService.getDecryptedPrivateKey(user);
+      if (!privateKey) {
+        this.logger.warn(`Could not decrypt private key for user: ${recipientEmail}`);
+        return email; // Return encrypted email if decryption fails
+      }
+
+      const decryptedMessage = await this.pgpService.decryptMessage(
+        email.message,
+        privateKey,
+      );
+
+      return {
+        ...email,
+        message: decryptedMessage,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to decrypt email ${uid}:`, error);
+      return email; // Return encrypted email if decryption fails
+    }
   }
 
   async sendEmail(sendMailDto: SendMailDto & { sender: string }) {
     const { recipient, sender, subject, message, headers, cc, bcc } = sendMailDto;
+
+    // Get recipient's PGP public key
+    const recipientPublicKey = await this.authService.getPublicKeyByEmail(recipient);
+    if (!recipientPublicKey) {
+      throw new BadRequestException(`Recipient ${recipient} does not have a PGP public key`);
+    }
+
+    // Encrypt message with recipient's public key
+    let encryptedMessage: string;
+    try {
+      encryptedMessage = await this.pgpService.encryptMessage(message, recipientPublicKey);
+    } catch (error) {
+      this.logger.error(`Failed to encrypt message for ${recipient}:`, error);
+      throw new InternalServerErrorException('Failed to encrypt email message');
+    }
 
     // Generate UUID for the email
     const uid = uuidv4();
@@ -143,13 +247,13 @@ export class MailService {
       ...headers,
     };
 
-    // Create mail record in database
+    // Create mail record in database with encrypted message
     const mail = this.mailRepository.create({
       uid,
       recipient,
       sender,
       headers: emailHeaders,
-      message,
+      message: encryptedMessage,
     });
 
     await this.mailRepository.save(mail);
@@ -301,13 +405,32 @@ export class MailService {
     const storedEmails = [];
 
     for (const recipient of rcptTo) {
+      // Get recipient's PGP public key
+      const recipientPublicKey = await this.authService.getPublicKeyByEmail(recipient);
+      if (!recipientPublicKey) {
+        this.logger.warn(`Recipient ${recipient} does not have a PGP public key, storing unencrypted`);
+        // Store unencrypted if recipient doesn't have PGP key
+        // This handles edge cases during migration
+      }
+
+      let encryptedBody = body;
+      if (recipientPublicKey) {
+        try {
+          encryptedBody = await this.pgpService.encryptMessage(body, recipientPublicKey);
+        } catch (error) {
+          this.logger.error(`Failed to encrypt message for ${recipient}:`, error);
+          // Store unencrypted if encryption fails
+          encryptedBody = body;
+        }
+      }
+
       const uid = uuidv4();
       const mail = this.mailRepository.create({
         uid,
         recipient,
         sender: mailFrom,
         headers,
-        message: body,
+        message: encryptedBody,
       });
 
       await this.mailRepository.save(mail);
