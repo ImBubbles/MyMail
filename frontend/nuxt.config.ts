@@ -21,7 +21,8 @@ if (enableHttps) {
   }
   
   // Resolve paths using same logic as backend
-  // For relative paths, resolve from __dirname (where nuxt.config.ts is)
+  // Backend uses: join(__dirname, '..', httpsKeyPath) for relative paths
+  // For frontend, resolve from __dirname (where nuxt.config.ts is) 
   // For absolute paths (starting with / or C:), use as-is
   const keyPath = httpsKeyPath.startsWith('/') || httpsKeyPath.match(/^[A-Z]:/)
     ? httpsKeyPath 
@@ -56,10 +57,13 @@ export default defineNuxtConfig({
   },
   nitro: {
     // HTTPS configuration for Nitro server (production mode)
-    // Use certificate buffers (same approach as backend)
-    // This ensures certificates are available at runtime
+    // Resolve paths to absolute paths at build time (same approach as backend)
+    // Backend: join(__dirname, '..', path) resolves from dist/ to backend/
+    // Frontend: We resolve from nuxt.config.ts location to frontend root
     ...(enableHttps && nitroHttpsConfig ? {
       https: {
+        // Use the already-loaded certificate buffers (same as backend)
+        // This ensures certificates are available regardless of build output location
         key: nitroHttpsConfig.key,
         cert: nitroHttpsConfig.cert,
       }
