@@ -7,6 +7,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
 // HTTPS configuration - requires certificate files
+// Using the same approach as backend - read certificates as buffers
 const enableHttps = process.env.ENABLE_HTTPS === 'true'
 let httpsConfig: any = false
 let nitroHttpsConfig: any = undefined
@@ -19,15 +20,18 @@ if (enableHttps) {
     throw new Error('HTTPS enabled but HTTPS_KEY_PATH and HTTPS_CERT_PATH must be provided in .env file')
   }
   
-  // Resolve paths (support both relative and absolute)
-  const keyPath = httpsKeyPath.startsWith('/') 
+  // Resolve paths using same logic as backend
+  // For relative paths, resolve from __dirname (where nuxt.config.ts is)
+  // For absolute paths (starting with / or C:), use as-is
+  const keyPath = httpsKeyPath.startsWith('/') || httpsKeyPath.match(/^[A-Z]:/)
     ? httpsKeyPath 
     : join(__dirname, httpsKeyPath)
-  const certPath = httpsCertPath.startsWith('/')
+  const certPath = httpsCertPath.startsWith('/') || httpsCertPath.match(/^[A-Z]:/)
     ? httpsCertPath
     : join(__dirname, httpsCertPath)
   
   try {
+    // Read certificates as buffers (same as backend)
     const certContents = {
       key: readFileSync(keyPath),
       cert: readFileSync(certPath),
@@ -52,13 +56,12 @@ export default defineNuxtConfig({
   },
   nitro: {
     // HTTPS configuration for Nitro server (production mode)
-    // Use file paths that Nitro will read at runtime
-    // Paths are resolved relative to the frontend directory where npm run start is executed
-    ...(enableHttps && process.env.HTTPS_KEY_PATH && process.env.HTTPS_CERT_PATH ? {
+    // Use certificate buffers (same approach as backend)
+    // This ensures certificates are available at runtime
+    ...(enableHttps && nitroHttpsConfig ? {
       https: {
-        // Use environment variables directly - Nitro will resolve these at runtime
-        key: process.env.HTTPS_KEY_PATH,
-        cert: process.env.HTTPS_CERT_PATH,
+        key: nitroHttpsConfig.key,
+        cert: nitroHttpsConfig.cert,
       }
     } : {}) as any,
   },
