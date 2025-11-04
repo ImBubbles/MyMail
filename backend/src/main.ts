@@ -1,14 +1,53 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+import * as https from 'https';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
   
   try {
+    // HTTPS configuration
+    const enableHttps = process.env.ENABLE_HTTPS === 'true';
+    let httpsOptions: https.ServerOptions | undefined;
+
+    if (enableHttps) {
+      const httpsKeyPath = process.env.HTTPS_KEY_PATH;
+      const httpsCertPath = process.env.HTTPS_CERT_PATH;
+
+      if (httpsKeyPath && httpsCertPath) {
+        // Use provided certificate files
+        try {
+          const keyPath = httpsKeyPath.startsWith('/') 
+            ? httpsKeyPath 
+            : join(__dirname, '..', httpsKeyPath);
+          const certPath = httpsCertPath.startsWith('/')
+            ? httpsCertPath
+            : join(__dirname, '..', httpsCertPath);
+
+          httpsOptions = {
+            key: readFileSync(keyPath),
+            cert: readFileSync(certPath),
+          };
+          logger.log('✅ HTTPS enabled with provided certificates');
+        } catch (error) {
+          logger.error('❌ Failed to read HTTPS certificate files:', error);
+          logger.warn('⚠️  HTTPS enabled but certificates not found. Please provide valid certificates or disable HTTPS.');
+          throw new Error('HTTPS enabled but certificates not found');
+        }
+      } else {
+        logger.warn('⚠️  ENABLE_HTTPS=true but HTTPS_KEY_PATH and HTTPS_CERT_PATH not provided');
+        logger.warn('⚠️  Please provide certificate paths or disable HTTPS');
+        throw new Error('HTTPS enabled but certificate paths not configured');
+      }
+    }
+
     const app = await NestFactory.create(AppModule, {
       logger: ['error', 'warn', 'log', 'debug', 'verbose'],
+      ...(enableHttps && httpsOptions ? { httpsOptions: httpsOptions as any } : {}),
     });
     
     // Enable cookie parser middleware
@@ -45,7 +84,8 @@ async function bootstrap() {
     const port = process.env.PORT || 3000;
     await app.listen(port);
     
-    logger.log(`🚀 Application is running on: http://localhost:${port}`);
+    const protocol = enableHttps ? 'https' : 'http';
+    logger.log(`🚀 Application is running on: ${protocol}://localhost:${port}`);
     logger.log(`📡 Frontend URL: ${frontendUrl}`);
     
     // Handle graceful shutdown

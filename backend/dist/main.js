@@ -6,12 +6,46 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const core_1 = require("@nestjs/core");
 const common_1 = require("@nestjs/common");
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
+const fs_1 = require("fs");
+const path_1 = require("path");
 const app_module_1 = require("./app.module");
 async function bootstrap() {
     const logger = new common_1.Logger('Bootstrap');
     try {
+        const enableHttps = process.env.ENABLE_HTTPS === 'true';
+        let httpsOptions;
+        if (enableHttps) {
+            const httpsKeyPath = process.env.HTTPS_KEY_PATH;
+            const httpsCertPath = process.env.HTTPS_CERT_PATH;
+            if (httpsKeyPath && httpsCertPath) {
+                try {
+                    const keyPath = httpsKeyPath.startsWith('/')
+                        ? httpsKeyPath
+                        : (0, path_1.join)(__dirname, '..', httpsKeyPath);
+                    const certPath = httpsCertPath.startsWith('/')
+                        ? httpsCertPath
+                        : (0, path_1.join)(__dirname, '..', httpsCertPath);
+                    httpsOptions = {
+                        key: (0, fs_1.readFileSync)(keyPath),
+                        cert: (0, fs_1.readFileSync)(certPath),
+                    };
+                    logger.log('✅ HTTPS enabled with provided certificates');
+                }
+                catch (error) {
+                    logger.error('❌ Failed to read HTTPS certificate files:', error);
+                    logger.warn('⚠️  HTTPS enabled but certificates not found. Please provide valid certificates or disable HTTPS.');
+                    throw new Error('HTTPS enabled but certificates not found');
+                }
+            }
+            else {
+                logger.warn('⚠️  ENABLE_HTTPS=true but HTTPS_KEY_PATH and HTTPS_CERT_PATH not provided');
+                logger.warn('⚠️  Please provide certificate paths or disable HTTPS');
+                throw new Error('HTTPS enabled but certificate paths not configured');
+            }
+        }
         const app = await core_1.NestFactory.create(app_module_1.AppModule, {
             logger: ['error', 'warn', 'log', 'debug', 'verbose'],
+            ...(enableHttps && httpsOptions ? { httpsOptions: httpsOptions } : {}),
         });
         app.use((0, cookie_parser_1.default)());
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
@@ -34,7 +68,8 @@ async function bootstrap() {
         app.enableShutdownHooks();
         const port = process.env.PORT || 3000;
         await app.listen(port);
-        logger.log(`🚀 Application is running on: http://localhost:${port}`);
+        const protocol = enableHttps ? 'https' : 'http';
+        logger.log(`🚀 Application is running on: ${protocol}://localhost:${port}`);
         logger.log(`📡 Frontend URL: ${frontendUrl}`);
         process.on('SIGTERM', async () => {
             logger.log('SIGTERM received, shutting down gracefully...');
