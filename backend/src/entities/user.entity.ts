@@ -20,7 +20,7 @@ export class User {
   @Column({ type: 'text' })
   salt: string;
 
-  @Column({ type: 'varchar', length: 255, nullable: true })
+  @Column({ type: 'text', nullable: true })
   email: string | null;
 
   @CreateDateColumn()

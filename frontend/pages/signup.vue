@@ -37,9 +37,9 @@
               v-model="form.username"
               type="text"
               required
-              minlength="3"
+              minlength="2"
               class="appearance-none relative block w-full px-4 py-3 border border-gray-300 placeholder-gray-400 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm transition-all"
-              placeholder="Enter your username (min 3 characters)"
+              placeholder="Enter your username (min 2 characters)"
             />
           </div>
 

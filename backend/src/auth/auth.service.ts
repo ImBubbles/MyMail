@@ -11,6 +11,7 @@ import * as bcrypt from 'bcrypt';
 import { User } from '../entities/user.entity';
 import { CreateAccountDto } from './dto/create-account.dto';
 import { LoginDto } from './dto/login.dto';
+import { EncryptionService } from '../utils/encryption.service';
 
 @Injectable()
 export class AuthService {
@@ -19,6 +20,7 @@ export class AuthService {
     private userRepository: Repository<User>,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private encryptionService: EncryptionService,
   ) {}
 
   async createAccount(createAccountDto: CreateAccountDto) {
@@ -28,14 +30,34 @@ export class AuthService {
     const hostname = this.configService.get<string>('HOSTNAME', 'localhost');
     const userEmail = email || `${username}@${hostname}`;
 
-    // Check if user already exists
-    const existingUser = await this.userRepository.findOne({
-      where: [{ username }, { email: userEmail }],
+    // Encrypt email before checking for duplicates
+    const encryptedEmail = this.encryptionService.encrypt(userEmail);
+
+    // Check if user already exists - decrypt emails for comparison
+    const allUsers = await this.userRepository.find({
+      where: [{ username }],
     });
 
-    if (existingUser) {
+    // Check username conflict
+    if (allUsers.length > 0) {
       throw new ConflictException(
-        'User with this username or email already exists',
+        'User with this username already exists',
+      );
+    }
+
+    // Check email conflict by decrypting and comparing
+    const usersWithEmails = await this.userRepository.find({
+      where: {},
+    });
+    const emailConflict = usersWithEmails.some((user) => {
+      if (!user.email) return false;
+      const decryptedEmail = this.encryptionService.decrypt(user.email);
+      return decryptedEmail === userEmail;
+    });
+
+    if (emailConflict) {
+      throw new ConflictException(
+        'User with this email already exists',
       );
     }
 
@@ -43,12 +65,12 @@ export class AuthService {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Create new user with email from HOSTNAME
+    // Create new user with encrypted email
     const user = this.userRepository.create({
       username,
       password: hashedPassword,
       salt,
-      email: userEmail,
+      email: encryptedEmail, // Store encrypted email
     });
 
     await this.userRepository.save(user);
@@ -56,12 +78,17 @@ export class AuthService {
     // Generate JWT token
     const token = await this.generateToken(user);
 
+    // Decrypt email before returning
+    const decryptedEmail = user.email
+      ? this.encryptionService.decrypt(user.email)
+      : null;
+
     return {
       message: 'Account created successfully',
       user: {
         id: user.id,
         username: user.username,
-        email: user.email,
+        email: decryptedEmail,
       },
       token,
     };
@@ -70,10 +97,20 @@ export class AuthService {
   async login(loginDto: LoginDto) {
     const { username, password } = loginDto;
 
-    // Find user by username or email
-    const user = await this.userRepository.findOne({
-      where: [{ username }, { email: username }],
+    // Find user by username first
+    let user = await this.userRepository.findOne({
+      where: [{ username }],
     });
+
+    // If not found by username, try to find by email (decrypting all emails)
+    if (!user) {
+      const allUsers = await this.userRepository.find();
+      user = allUsers.find((u) => {
+        if (!u.email) return false;
+        const decryptedEmail = this.encryptionService.decrypt(u.email);
+        return decryptedEmail === username;
+      }) || null;
+    }
 
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
@@ -89,12 +126,17 @@ export class AuthService {
     // Generate JWT token
     const token = await this.generateToken(user);
 
+    // Decrypt email before returning
+    const decryptedEmail = user.email
+      ? this.encryptionService.decrypt(user.email)
+      : null;
+
     return {
       message: 'Login successful',
       user: {
         id: user.id,
         username: user.username,
-        email: user.email,
+        email: decryptedEmail,
       },
       token,
     };
@@ -115,12 +157,17 @@ export class AuthService {
         throw new UnauthorizedException('Invalid token');
       }
 
+      // Decrypt email before returning
+      const decryptedEmail = user.email
+        ? this.encryptionService.decrypt(user.email)
+        : null;
+
       return {
         valid: true,
         user: {
           id: user.id,
           username: user.username,
-          email: user.email,
+          email: decryptedEmail,
         },
       };
     } catch (error) {
@@ -129,9 +176,16 @@ export class AuthService {
   }
 
   async getUserById(userId: number): Promise<User | null> {
-    return this.userRepository.findOne({
+    const user = await this.userRepository.findOne({
       where: { id: userId },
     });
+    
+    // Decrypt email if user exists
+    if (user && user.email) {
+      user.email = this.encryptionService.decrypt(user.email);
+    }
+    
+    return user;
   }
 
   private async generateToken(user: User) {
