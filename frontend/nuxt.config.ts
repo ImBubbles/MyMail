@@ -31,25 +31,28 @@ if (enableHttps) {
         ? httpsCertPath
         : join(__dirname, httpsCertPath)
 
-      // Read certificate files as Buffers (same as backend)
-      const keyBuffer = readFileSync(keyPath)
-      const certBuffer = readFileSync(certPath)
+      // Verify files exist and are readable
+      readFileSync(keyPath)
+      readFileSync(certPath)
       
-      // Use Buffers for both devServer (Vite) and Nitro
-      // Vite supports Buffers, and this matches the backend approach exactly
+      // CRITICAL: Vite devServer requires FILE PATHS, not Buffers
+      // Using Buffers causes Vite to silently fail and serve HTTP instead of HTTPS
       devServerHttpsConfig = {
-        key: keyBuffer,
-        cert: certBuffer,
+        key: keyPath,  // File path string (required for Vite)
+        cert: certPath, // File path string (required for Vite)
       }
       
+      // Use Buffers for Nitro (production server)
       nitroHttpsConfig = {
-        key: keyBuffer,
-        cert: certBuffer,
+        key: readFileSync(keyPath),
+        cert: readFileSync(certPath),
       }
       
       console.log('✅ HTTPS enabled with provided certificates')
       console.log(`   Key: ${keyPath}`)
       console.log(`   Cert: ${certPath}`)
+      console.log(`   DevServer: Using file paths (required for Vite)`)
+      console.log(`   Nitro: Using Buffers (for production)`)
     } catch (error) {
       console.error('❌ Failed to read HTTPS certificate files:', error)
       console.error('⚠️  HTTPS enabled but certificates not found. Please provide valid certificates or disable HTTPS.')
@@ -71,8 +74,9 @@ export default defineNuxtConfig({
     // Port 443 requires admin privileges and can cause binding failures
     port: Number(process.env.PORT ?? '3001'),
     https: devServerHttpsConfig,
-    // Host should be explicitly set for HTTPS to work properly
-    host: process.env.HOST || 'localhost',
+    // Host: 0.0.0.0 allows binding to all interfaces
+    // Access via mail.haydenholmes.dev in browser (resolves via hosts file)
+    host: process.env.HOST || '0.0.0.0',
   },
   nitro: {
     // HTTPS configuration for Nitro server (production mode)
