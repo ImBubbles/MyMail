@@ -8,7 +8,7 @@ const __dirname = dirname(__filename)
 
 // HTTPS configuration - EXACTLY matching backend approach
 const enableHttps = process.env.ENABLE_HTTPS === 'true'
-let httpsConfig: any = false
+let devServerHttpsConfig: any = false
 let nitroHttpsConfig: any = undefined
 
 if (enableHttps) {
@@ -31,14 +31,25 @@ if (enableHttps) {
         ? httpsCertPath
         : join(__dirname, httpsCertPath)
 
-      // Backend creates: httpsOptions = { key: readFileSync(keyPath), cert: readFileSync(certPath) }
-      nitroHttpsConfig = {
-        key: readFileSync(keyPath),
-        cert: readFileSync(certPath),
+      // Read certificate files as Buffers (same as backend)
+      const keyBuffer = readFileSync(keyPath)
+      const certBuffer = readFileSync(certPath)
+      
+      // Use Buffers for both devServer (Vite) and Nitro
+      // Vite supports Buffers, and this matches the backend approach exactly
+      devServerHttpsConfig = {
+        key: keyBuffer,
+        cert: certBuffer,
       }
       
-      httpsConfig = nitroHttpsConfig
+      nitroHttpsConfig = {
+        key: keyBuffer,
+        cert: certBuffer,
+      }
+      
       console.log('✅ HTTPS enabled with provided certificates')
+      console.log(`   Key: ${keyPath}`)
+      console.log(`   Cert: ${certPath}`)
     } catch (error) {
       console.error('❌ Failed to read HTTPS certificate files:', error)
       console.error('⚠️  HTTPS enabled but certificates not found. Please provide valid certificates or disable HTTPS.')
@@ -56,8 +67,12 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   modules: ['@nuxt/eslint', '@nuxt/fonts', '@nuxtjs/tailwindcss'],
   devServer: {
-    port: Number(process.env.PORT ?? (enableHttps ? '443' : '3001')),
-    https: httpsConfig,
+    // Use non-privileged port (3001) even for HTTPS to avoid admin requirements on Windows
+    // Port 443 requires admin privileges and can cause binding failures
+    port: Number(process.env.PORT ?? '3001'),
+    https: devServerHttpsConfig,
+    // Host should be explicitly set for HTTPS to work properly
+    host: process.env.HOST || 'localhost',
   },
   nitro: {
     // HTTPS configuration for Nitro server (production mode)
